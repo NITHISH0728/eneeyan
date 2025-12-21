@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { motion } from "framer-motion"; // Make sure to install: npm install framer-motion
-import { ArrowRight, ChevronRight } from "lucide-react";
+import { motion } from "framer-motion"; 
+import { ArrowRight } from "lucide-react";
 
 const LandingPage = () => {
   const navigate = useNavigate();
@@ -24,8 +24,8 @@ const LandingPage = () => {
   return (
     <div className="h-screen w-full bg-white overflow-hidden flex flex-col font-sans">
       
-      {/* UPPER HALF (Hero Section) */}
-      <div className="h-[62.5vh] flex relative">
+      {/* UPPER HALF (Hero Section - Remains White for Impact) */}
+      <div className="h-[62.5vh] flex relative bg-white">
         {/* Text Animation from Left */}
         <div className="w-1/2 flex flex-col justify-center pl-20 z-10">
           {["Learn Every Day & Any", "new skills online", "with our iQmath platform"].map((line, i) => (
@@ -41,14 +41,13 @@ const LandingPage = () => {
           ))}
         </div>
 
-        {/* Logo Animation from Right */}
+        {/* Logo Animation from Right (Light Slate Background for contrast) */}
         <motion.div 
           initial={{ x: 100, opacity: 0 }}
           animate={{ x: 0, opacity: 1 }}
           transition={{ delay: 1.5, duration: 1, ease: "easeOut" }}
-          className="w-1/2 flex items-center justify-center bg-slate-50 relative"
+          className="w-1/2 flex items-center justify-center bg-[#F8FAFC] relative"
         >
-           {/* Replace with your actual logo image path if available */}
            <div className="text-center">
               <h1 className="text-8xl font-black text-[#005EB8] tracking-tighter">iQ<span className="text-[#87C232]">math</span></h1>
               <p className="text-xl text-slate-400 mt-4 tracking-widest uppercase font-bold">Technologies</p>
@@ -56,14 +55,14 @@ const LandingPage = () => {
         </motion.div>
       </div>
 
-      {/* LOWER HALF */}
-      <div className="flex-1 flex border-t border-slate-100">
+      {/* LOWER HALF (Matches App Gray Theme) */}
+      <div className="flex-1 flex border-t border-[#cbd5e1]">
         
         {/* Typing Script Section */}
-        <div className="w-1/2 bg-[#f8fafc] p-20 flex items-center">
-           <div className="text-xl text-slate-600 font-mono">
+        <div className="w-1/2 bg-[#E2E8F0] p-20 flex items-center">
+           <div className="text-xl text-[#475569] font-mono leading-relaxed">
               {displayText}
-              <span className="animate-pulse">|</span>
+              <span className="animate-pulse text-[#005EB8]">|</span>
            </div>
         </div>
 
@@ -72,8 +71,8 @@ const LandingPage = () => {
            <motion.button
               whileHover={{ scale: 1.05, y: -5 }}
               whileTap={{ scale: 0.95 }}
-              onClick={() => navigate("/login")} // Navigate to login page
-              className="px-10 py-5 bg-[#005EB8] text-white text-xl font-bold rounded-full shadow-2xl flex items-center gap-4 hover:shadow-[#005EB8]/40 transition-all"
+              onClick={() => navigate("/login")} 
+              className="px-10 py-5 bg-[#005EB8] text-white text-xl font-bold rounded-full shadow-xl flex items-center gap-4 hover:shadow-[#005EB8]/40 transition-all hover:bg-[#004a94]"
            >
               Explore Now <ArrowRight size={24} />
            </motion.button>

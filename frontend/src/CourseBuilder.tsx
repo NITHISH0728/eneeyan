@@ -44,8 +44,16 @@ const CourseBuilder = () => {
   // ✅ NEW: Toast State
   const [toast, setToast] = useState({ show: false, message: "", type: "success" });
 
-  // 🎨 iQmath Professional Brand Palette
-  const brand = { blue: "#005EB8", green: "#87C232", bg: "#F8FAFC", border: "#e2e8f0", textMain: "#1e293b", textLight: "#64748b" };
+  // 🎨 PROFESSIONAL THEME (Soft Gray)
+  const brand = { 
+    blue: "#005EB8", 
+    green: "#87C232", 
+    bg: "#E2E8F0",          // ✅ Light Slate Background
+    cardBg: "#F8FAFC",      // ✅ Off-White Card
+    border: "#cbd5e1",      // Subtle Border
+    textMain: "#1e293b", 
+    textLight: "#64748b" 
+  };
 
   // --- HELPER: Trigger Toast ---
   const triggerToast = (message: string, type: "success" | "error" = "success") => {
@@ -140,9 +148,9 @@ const CourseBuilder = () => {
     <div style={{ maxWidth: "1400px", margin: "0 auto", paddingBottom: "100px", background: brand.bg, minHeight: "100vh" }}>
       
       {/* 🟢 TOP ACTION BAR */}
-      <header style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "32px", background: "white", padding: "16px 40px", borderBottom: `1px solid ${brand.border}`, position: "sticky", top: 0, zIndex: 50 }}>
+      <header style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "32px", background: brand.cardBg, padding: "16px 40px", borderBottom: `1px solid ${brand.border}`, position: "sticky", top: 0, zIndex: 50 }}>
         <div style={{ display: "flex", alignItems: "center", gap: "20px" }}>
-          <button onClick={() => navigate("/dashboard/courses")} style={{ background: "#f1f5f9", border: "none", padding: "10px", borderRadius: "50%", cursor: "pointer" }}><ArrowLeft size={20} color={brand.textMain} /></button>
+          <button onClick={() => navigate("/dashboard/courses")} style={{ background: "#E2E8F0", border: "none", padding: "10px", borderRadius: "50%", cursor: "pointer" }}><ArrowLeft size={20} color={brand.textMain} /></button>
           <div>
             <h2 style={{ fontSize: "20px", fontWeight: "800", color: brand.textMain, margin: 0 }}>Course Curriculum Builder</h2>
             <p style={{ fontSize: "13px", color: brand.textLight, margin: 0 }}>Configure modules and frame content for learners</p>
@@ -171,7 +179,7 @@ const CourseBuilder = () => {
       <div style={{ display: "grid", gridTemplateColumns: "350px 1fr", gap: "40px", padding: "0 40px" }}>
         
         {/* 🛠️ LEFT SIDEBAR */}
-        <aside style={{ background: "white", borderRadius: "16px", border: `1px solid ${brand.border}`, padding: "24px", height: "fit-content" }}>
+        <aside style={{ background: brand.cardBg, borderRadius: "16px", border: `1px solid ${brand.border}`, padding: "24px", height: "fit-content" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px" }}>
             <h3 style={{ fontSize: "16px", fontWeight: "800" }}>Curriculum</h3>
             <button onClick={() => setActiveModal("Heading")} style={{ color: brand.blue, background: "none", border: "none", fontSize: "12px", fontWeight: "700", cursor: "pointer" }}>+ New Heading</button>
@@ -179,14 +187,14 @@ const CourseBuilder = () => {
           
           <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
             {modules.map((m) => (
-              <div key={m.id} onClick={() => setSelectedModuleId(m.id)} style={{ display: "flex", alignItems: "center", gap: "12px", padding: "14px", background: selectedModuleId === m.id ? "#f0f7ff" : "white", borderRadius: "12px", border: selectedModuleId === m.id ? `1.5px solid ${brand.blue}` : `1px solid ${brand.border}`, cursor: "pointer", transition: "all 0.2s ease" }}>
+              <div key={m.id} onClick={() => setSelectedModuleId(m.id)} style={{ display: "flex", alignItems: "center", gap: "12px", padding: "14px", background: selectedModuleId === m.id ? "#E2E8F0" : "white", borderRadius: "12px", border: selectedModuleId === m.id ? `1.5px solid ${brand.blue}` : `1px solid ${brand.border}`, cursor: "pointer", transition: "all 0.2s ease" }}>
                 <Layout size={18} color={selectedModuleId === m.id ? brand.blue : brand.textLight} />
                 <span style={{ fontSize: "14px", fontWeight: "600", color: brand.textMain }}>{m.title}</span>
               </div>
             ))}
 
             {showAddModule ? (
-              <div style={{ marginTop: "10px", padding: "15px", background: "#f8fafc", borderRadius: "12px" }}>
+              <div style={{ marginTop: "10px", padding: "15px", background: "#f1f5f9", borderRadius: "12px" }}>
                 <input autoFocus placeholder="Module Name..." value={newModuleTitle} onChange={(e) => setNewModuleTitle(e.target.value)} style={{ width: "100%", padding: "10px", borderRadius: "8px", border: `1px solid ${brand.border}`, marginBottom: "10px", outline: "none" }} />
                 <div style={{ display: "flex", gap: "8px" }}>
                   <button onClick={handleAddModule} style={{ flex: 1, background: brand.blue, color: "white", border: "none", padding: "10px", borderRadius: "8px", fontWeight: "700" }}>Add</button>
@@ -199,8 +207,8 @@ const CourseBuilder = () => {
           </div>
         </aside>
 
-        {/* 📝 RIGHT MAIN: GRAPHY CONTENT SELECTOR */}
-        <main style={{ background: "white", borderRadius: "20px", border: `1px solid ${brand.border}`, padding: "60px", textAlign: "center" }}>
+        {/* 📝 RIGHT MAIN: CONTENT SELECTOR */}
+        <main style={{ background: brand.cardBg, borderRadius: "20px", border: `1px solid ${brand.border}`, padding: "60px", textAlign: "center" }}>
           <Layout size={48} color={brand.border} style={{ marginBottom: "20px" }} />
           <h2 style={{ fontSize: "28px", fontWeight: "800", color: brand.textMain, marginBottom: "8px" }}>Create new learning item</h2>
           <p style={{ color: brand.textLight, marginBottom: "48px" }}>Items will be added to: <span style={{color: brand.blue, fontWeight: "700"}}>{modules.find(m => m.id === selectedModuleId)?.title || "Select a module"}</span></p>
@@ -368,15 +376,15 @@ const CourseBuilder = () => {
 // --- 💅 STYLES ---
 const selectorCard = { 
   display: "flex", alignItems: "center", gap: "20px", padding: "24px", 
-  background: "white", borderRadius: "16px", border: "1.5px solid #e2e8f0", 
+  background: "white", borderRadius: "16px", border: "1.5px solid #cbd5e1", 
   cursor: "pointer", transition: "all 0.2s ease", boxShadow: "0 2px 4px rgba(0,0,0,0.02)" 
 };
 const cardTitle = { fontSize: "16px", fontWeight: "800", color: "#1e293b", marginBottom: "4px" };
 const cardDesc = { fontSize: "12px", color: "#64748b" };
 const modalOverlay = { position: "fixed" as const, top: 0, left: 0, right: 0, bottom: 0, background: "rgba(15, 23, 42, 0.7)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000, padding: "20px" };
-const modalContent = { background: "white", width: "100%", maxWidth: "550px", padding: "40px", borderRadius: "24px", boxShadow: "0 25px 50px -12px rgba(0,0,0,0.5)" };
+const modalContent = { background: "#F8FAFC", width: "100%", maxWidth: "550px", padding: "40px", borderRadius: "24px", boxShadow: "0 25px 50px -12px rgba(0,0,0,0.5)" };
 const labelStyle = { display: "block", marginBottom: "8px", fontSize: "12px", fontWeight: "800", color: "#1e293b", textTransform: "uppercase" as const, letterSpacing: "0.5px" };
-const inputStyle = { width: "100%", padding: "14px", borderRadius: "12px", border: "1.5px solid #e2e8f0", fontSize: "15px", outline: "none", boxSizing: "border-box" as const, background: "#f8fafc" };
+const inputStyle = { width: "100%", padding: "14px", borderRadius: "12px", border: "1.5px solid #cbd5e1", fontSize: "15px", outline: "none", boxSizing: "border-box" as const, background: "white" };
 const saveButton = { width: "100%", padding: "16px", marginTop: "32px", background: "#005EB8", color: "white", border: "none", borderRadius: "14px", fontSize: "16px", fontWeight: "800", cursor: "pointer", boxShadow: "0 10px 15px -3px rgba(0, 94, 184, 0.3)" };
 
 export default CourseBuilder;

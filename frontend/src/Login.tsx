@@ -3,11 +3,10 @@ import { useNavigate } from "react-router-dom";
 import axios from "axios";
 import { 
   User, Lock, Mail, ArrowRight, CheckCircle, 
-  GraduationCap, AlertCircle, X, ShieldCheck, 
-  Eye, EyeOff, Facebook, Github, Linkedin // ✅ Imported Social Icons
+  ShieldCheck, Eye, EyeOff, Facebook, Github, Linkedin, AlertCircle, X
 } from "lucide-react";
 
-// Google Icon Component (Since it's not in Lucide)
+// Google Icon Component
 const GoogleIcon = () => (
   <svg viewBox="0 0 24 24" width="20" height="20" xmlns="http://www.w3.org/2000/svg">
     <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
@@ -17,11 +16,7 @@ const GoogleIcon = () => (
   </svg>
 );
 
-interface ToastState {
-  show: boolean;
-  message: string;
-  type: "success" | "error";
-}
+interface ToastState { show: boolean; message: string; type: "success" | "error"; }
 
 const Login = () => {
   const navigate = useNavigate();
@@ -29,106 +24,66 @@ const Login = () => {
   const role = "student"; 
   const [loading, setLoading] = useState(false);
   const [toast, setToast] = useState<ToastState>({ show: false, message: "", type: "success" });
-  
-  // Password Visibility
   const [showPassword, setShowPassword] = useState(false);
-
   const [formData, setFormData] = useState({ email: "", password: "", name: "" });
 
   const activeBg = isSignUp ? "bg-[#87C232]" : "bg-[#005EB8]";
   const activeText = isSignUp ? "text-[#87C232]" : "text-[#005EB8]";
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
-  };
-
-  const triggerToast = (message: string, type: "success" | "error" = "success") => {
-    setToast({ show: true, message, type });
-    setTimeout(() => setToast((prev) => ({ ...prev, show: false })), 3000);
-  };
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => { setFormData({ ...formData, [e.target.name]: e.target.value }); };
+  const triggerToast = (message: string, type: "success" | "error" = "success") => { setToast({ show: true, message, type }); setTimeout(() => setToast((prev) => ({ ...prev, show: false })), 3000); };
 
   const handleAuth = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
+    e.preventDefault(); setLoading(true);
     try {
         if (!isSignUp) {
-            const loginParams = new URLSearchParams();
-            loginParams.append("username", formData.email);
-            loginParams.append("password", formData.password);
-            
+            const loginParams = new URLSearchParams(); loginParams.append("username", formData.email); loginParams.append("password", formData.password);
             const res = await axios.post("http://127.0.0.1:8000/api/v1/login", loginParams);
-            
-            if (res.data.role !== "student") {
-                triggerToast("Please use the Admin Portal for Instructor access.", "error");
-                setLoading(false); return;
-            }
-            localStorage.setItem("token", res.data.access_token);
-            localStorage.setItem("role", res.data.role);
-            triggerToast("Login Successful! Redirecting...", "success");
-            setTimeout(() => navigate("/student-dashboard"), 1000);
+            if (res.data.role !== "student") { triggerToast("Please use the Admin Portal for Instructor access.", "error"); setLoading(false); return; }
+            localStorage.setItem("token", res.data.access_token); localStorage.setItem("role", res.data.role);
+            triggerToast("Login Successful! Redirecting...", "success"); setTimeout(() => navigate("/student-dashboard"), 1000);
         } else {
-            await axios.post("http://127.0.0.1:8000/api/v1/users", {
-                email: formData.email, password: formData.password, name: formData.name, role: role,
-            });
-            triggerToast("Account created! Please Sign In.", "success");
-            setIsSignUp(false);
+            await axios.post("http://127.0.0.1:8000/api/v1/users", { email: formData.email, password: formData.password, name: formData.name, role: role });
+            triggerToast("Account created! Please Sign In.", "success"); setIsSignUp(false);
         }
-    } catch (err: any) {
-        triggerToast("Authentication failed. Check credentials.", "error");
-    } finally {
-        setLoading(false);
-    }
+    } catch (err: any) { triggerToast("Authentication failed. Check credentials.", "error"); } finally { setLoading(false); }
   };
 
   return (
-    <div className="flex items-center justify-center min-h-screen bg-slate-100 font-sans p-4 overflow-hidden relative">
-      <button onClick={() => navigate("/admin-login")} className="absolute top-6 right-6 flex items-center gap-2 px-4 py-2 bg-white rounded-full shadow-md text-slate-600 hover:text-[#005EB8] hover:shadow-lg transition-all z-50 font-bold text-sm">
+    <div className="flex items-center justify-center min-h-screen bg-[#E2E8F0] font-sans p-4 overflow-hidden relative">
+      <button onClick={() => navigate("/admin-login")} className="absolute top-6 right-6 flex items-center gap-2 px-4 py-2 bg-white rounded-full shadow-md text-slate-600 hover:text-[#005EB8] hover:shadow-lg transition-all z-50 font-bold text-sm border border-slate-200">
         <ShieldCheck size={18} /> Admin Access
       </button>
 
-      <div className="relative bg-white rounded-[20px] shadow-2xl overflow-hidden w-full max-w-[1000px] min-h-[600px] flex">
+      <div className="relative bg-[#F8FAFC] rounded-[20px] shadow-2xl overflow-hidden w-full max-w-[1000px] min-h-[600px] flex border border-slate-200">
         
         {/* SIGN IN FORM */}
         <div className={`absolute top-0 h-full transition-all duration-700 ease-in-out left-0 w-1/2 z-20 ${isSignUp ? 'translate-x-full opacity-0 pointer-events-none' : 'opacity-100'}`}>
-          <form onSubmit={handleAuth} className="bg-white flex flex-col items-center justify-center h-full px-12 text-center">
+          <form onSubmit={handleAuth} className="bg-[#F8FAFC] flex flex-col items-center justify-center h-full px-12 text-center">
             <div className="mb-4"><h1 className={`text-3xl font-extrabold ${activeText} tracking-tight`}>iQmath</h1></div>
             <h1 className="text-2xl font-bold text-slate-800 mb-1">Learner Login</h1>
             <p className="text-slate-400 text-sm mb-6">Enter your details to access your courses</p>
 
-            {/* ✅ SOCIAL LOGIN BUTTONS */}
             <div className="flex gap-4 mb-6 w-full justify-center">
-                <button type="button" className="p-2.5 rounded-xl border border-slate-200 hover:bg-slate-50 transition-all shadow-sm"><GoogleIcon /></button>
-                <button type="button" className="p-2.5 rounded-xl border border-slate-200 hover:bg-slate-50 transition-all shadow-sm text-[#1877F2]"><Facebook size={20} fill="currentColor" strokeWidth={0} /></button>
-                <button type="button" className="p-2.5 rounded-xl border border-slate-200 hover:bg-slate-50 transition-all shadow-sm text-slate-800"><Github size={20} /></button>
-                <button type="button" className="p-2.5 rounded-xl border border-slate-200 hover:bg-slate-50 transition-all shadow-sm text-[#0A66C2]"><Linkedin size={20} fill="currentColor" strokeWidth={0} /></button>
+                <button type="button" className="p-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 transition-all shadow-sm"><GoogleIcon /></button>
+                <button type="button" className="p-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 transition-all shadow-sm text-[#1877F2]"><Facebook size={20} fill="currentColor" strokeWidth={0} /></button>
+                <button type="button" className="p-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 transition-all shadow-sm text-slate-800"><Github size={20} /></button>
+                <button type="button" className="p-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 transition-all shadow-sm text-[#0A66C2]"><Linkedin size={20} fill="currentColor" strokeWidth={0} /></button>
             </div>
 
             <div className="flex items-center w-full mb-6">
-                <div className="h-px bg-slate-200 flex-1"></div>
-                <span className="px-3 text-xs text-slate-400 font-medium">OR USE EMAIL</span>
-                <div className="h-px bg-slate-200 flex-1"></div>
+                <div className="h-px bg-slate-200 flex-1"></div><span className="px-3 text-xs text-slate-400 font-medium">OR USE EMAIL</span><div className="h-px bg-slate-200 flex-1"></div>
             </div>
 
-            {/* INPUTS */}
             <div className="w-full max-w-[350px] space-y-4">
-                <div className="flex items-center bg-slate-50 rounded-lg px-4 py-3 border border-slate-200 focus-within:ring-2 focus-within:ring-[#005EB8] focus-within:ring-opacity-50 transition-all">
-                    <Mail className="text-slate-400 mr-3 shrink-0" size={20} />
+                <div className="flex items-center bg-white rounded-lg px-4 py-3 border border-slate-200 focus-within:ring-2 focus-within:ring-[#005EB8] focus-within:ring-opacity-50 transition-all shadow-sm">
+                    <Mail className="text-slate-400 mr-3 shrink-0" size={20} strokeWidth={1.5} />
                     <input type="email" name="email" placeholder="Email Address" required className="bg-transparent outline-none flex-1 text-sm font-medium text-slate-700 placeholder-slate-400" onChange={handleInputChange} />
                 </div>
-                
-                <div className="flex items-center bg-slate-50 rounded-lg px-4 py-3 border border-slate-200 focus-within:ring-2 focus-within:ring-[#005EB8] focus-within:ring-opacity-50 transition-all">
-                    <Lock className="text-slate-400 mr-3 shrink-0" size={20} />
-                    <input 
-                        type={showPassword ? "text" : "password"} 
-                        name="password" 
-                        placeholder="Password" 
-                        required 
-                        className="bg-transparent outline-none flex-1 text-sm font-medium text-slate-700 placeholder-slate-400" 
-                        onChange={handleInputChange} 
-                    />
-                    <button type="button" onClick={() => setShowPassword(!showPassword)} className="text-slate-400 hover:text-slate-600 focus:outline-none ml-2 shrink-0">
-                        {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
-                    </button>
+                <div className="flex items-center bg-white rounded-lg px-4 py-3 border border-slate-200 focus-within:ring-2 focus-within:ring-[#005EB8] focus-within:ring-opacity-50 transition-all shadow-sm">
+                    <Lock className="text-slate-400 mr-3 shrink-0" size={20} strokeWidth={1.5} />
+                    <input type={showPassword ? "text" : "password"} name="password" placeholder="Password" required className="bg-transparent outline-none flex-1 text-sm font-medium text-slate-700 placeholder-slate-400" onChange={handleInputChange} />
+                    <button type="button" onClick={() => setShowPassword(!showPassword)} className="text-slate-400 hover:text-slate-600 focus:outline-none ml-2 shrink-0">{showPassword ? <EyeOff size={20} /> : <Eye size={20} />}</button>
                 </div>
             </div>
 
@@ -139,46 +94,34 @@ const Login = () => {
 
         {/* SIGN UP FORM */}
         <div className={`absolute top-0 h-full transition-all duration-700 ease-in-out left-0 w-1/2 z-10 ${isSignUp ? 'translate-x-full opacity-100 z-30' : 'opacity-0 pointer-events-none'}`}>
-          <form onSubmit={handleAuth} className="bg-white flex flex-col items-center justify-center h-full px-12 text-center">
+          <form onSubmit={handleAuth} className="bg-[#F8FAFC] flex flex-col items-center justify-center h-full px-12 text-center">
             <h1 className={`text-3xl font-bold mb-2 ${activeText}`}>Create Account</h1>
             <p className="text-slate-400 text-sm mb-6">Join iQmath as a new student</p>
 
-            {/* ✅ SOCIAL LOGIN BUTTONS (For Sign Up too) */}
             <div className="flex gap-4 mb-6 w-full justify-center">
-                <button type="button" className="p-2.5 rounded-xl border border-slate-200 hover:bg-slate-50 transition-all shadow-sm"><GoogleIcon /></button>
-                <button type="button" className="p-2.5 rounded-xl border border-slate-200 hover:bg-slate-50 transition-all shadow-sm text-[#1877F2]"><Facebook size={20} fill="currentColor" strokeWidth={0} /></button>
-                <button type="button" className="p-2.5 rounded-xl border border-slate-200 hover:bg-slate-50 transition-all shadow-sm text-slate-800"><Github size={20} /></button>
-                <button type="button" className="p-2.5 rounded-xl border border-slate-200 hover:bg-slate-50 transition-all shadow-sm text-[#0A66C2]"><Linkedin size={20} fill="currentColor" strokeWidth={0} /></button>
+                <button type="button" className="p-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 transition-all shadow-sm"><GoogleIcon /></button>
+                <button type="button" className="p-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 transition-all shadow-sm text-[#1877F2]"><Facebook size={20} fill="currentColor" strokeWidth={0} /></button>
+                <button type="button" className="p-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 transition-all shadow-sm text-slate-800"><Github size={20} /></button>
+                <button type="button" className="p-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 transition-all shadow-sm text-[#0A66C2]"><Linkedin size={20} fill="currentColor" strokeWidth={0} /></button>
             </div>
 
             <div className="flex items-center w-full mb-6">
-                <div className="h-px bg-slate-200 flex-1"></div>
-                <span className="px-3 text-xs text-slate-400 font-medium">OR USE EMAIL</span>
-                <div className="h-px bg-slate-200 flex-1"></div>
+                <div className="h-px bg-slate-200 flex-1"></div><span className="px-3 text-xs text-slate-400 font-medium">OR USE EMAIL</span><div className="h-px bg-slate-200 flex-1"></div>
             </div>
 
             <div className="w-full max-w-[350px] space-y-4">
-                <div className="flex items-center bg-slate-50 rounded-lg px-4 py-3 border border-slate-200 focus-within:ring-2 focus-within:ring-[#87C232]">
-                    <User className="text-slate-400 mr-3 shrink-0" size={20} />
+                <div className="flex items-center bg-white rounded-lg px-4 py-3 border border-slate-200 focus-within:ring-2 focus-within:ring-[#87C232] shadow-sm">
+                    <User className="text-slate-400 mr-3 shrink-0" size={20} strokeWidth={1.5} />
                     <input type="text" name="name" placeholder="Full Name" required className="bg-transparent outline-none flex-1 text-sm font-medium text-slate-700 placeholder-slate-400" onChange={handleInputChange} />
                 </div>
-                <div className="flex items-center bg-slate-50 rounded-lg px-4 py-3 border border-slate-200 focus-within:ring-2 focus-within:ring-[#87C232]">
-                    <Mail className="text-slate-400 mr-3 shrink-0" size={20} />
+                <div className="flex items-center bg-white rounded-lg px-4 py-3 border border-slate-200 focus-within:ring-2 focus-within:ring-[#87C232] shadow-sm">
+                    <Mail className="text-slate-400 mr-3 shrink-0" size={20} strokeWidth={1.5} />
                     <input type="email" name="email" placeholder="Email Address" required className="bg-transparent outline-none flex-1 text-sm font-medium text-slate-700 placeholder-slate-400" onChange={handleInputChange} />
                 </div>
-                <div className="flex items-center bg-slate-50 rounded-lg px-4 py-3 border border-slate-200 focus-within:ring-2 focus-within:ring-[#87C232]">
-                    <Lock className="text-slate-400 mr-3 shrink-0" size={20} />
-                    <input 
-                        type={showPassword ? "text" : "password"} 
-                        name="password" 
-                        placeholder="Create Password" 
-                        required 
-                        className="bg-transparent outline-none flex-1 text-sm font-medium text-slate-700 placeholder-slate-400" 
-                        onChange={handleInputChange} 
-                    />
-                    <button type="button" onClick={() => setShowPassword(!showPassword)} className="text-slate-400 hover:text-slate-600 focus:outline-none ml-2 shrink-0">
-                        {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
-                    </button>
+                <div className="flex items-center bg-white rounded-lg px-4 py-3 border border-slate-200 focus-within:ring-2 focus-within:ring-[#87C232] shadow-sm">
+                    <Lock className="text-slate-400 mr-3 shrink-0" size={20} strokeWidth={1.5} />
+                    <input type={showPassword ? "text" : "password"} name="password" placeholder="Create Password" required className="bg-transparent outline-none flex-1 text-sm font-medium text-slate-700 placeholder-slate-400" onChange={handleInputChange} />
+                    <button type="button" onClick={() => setShowPassword(!showPassword)} className="text-slate-400 hover:text-slate-600 focus:outline-none ml-2 shrink-0">{showPassword ? <EyeOff size={20} /> : <Eye size={20} />}</button>
                 </div>
             </div>
 

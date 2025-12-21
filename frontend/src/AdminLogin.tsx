@@ -54,27 +54,28 @@ const AdminLogin = () => {
   };
 
   return (
-    <div className="flex items-center justify-center min-h-screen bg-slate-50 font-sans p-4 overflow-hidden relative">
-      <button onClick={() => navigate("/")} className="absolute top-6 right-6 flex items-center gap-2 px-5 py-2.5 bg-white rounded-full shadow-md text-slate-600 hover:text-[#005EB8] hover:shadow-lg transition-all z-50 font-bold text-sm border border-slate-100">
+    <div className="flex items-center justify-center min-h-screen bg-[#E2E8F0] font-sans p-4 overflow-hidden relative">
+      <button onClick={() => navigate("/")} className="absolute top-6 right-6 flex items-center gap-2 px-5 py-2.5 bg-white rounded-full shadow-md text-slate-600 hover:text-[#005EB8] hover:shadow-lg transition-all z-50 font-bold text-sm border border-slate-200">
         <GraduationCap size={18} /> Learner Portal
       </button>
 
-      <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] rounded-full bg-[#005EB8]/10 blur-[100px]"></div>
-      <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] rounded-full bg-[#87C232]/10 blur-[100px]"></div>
+      {/* Decorative Blurs */}
+      <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] rounded-full bg-[#005EB8]/5 blur-[100px]"></div>
+      <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] rounded-full bg-[#87C232]/5 blur-[100px]"></div>
 
-      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-[450px] p-10 border border-slate-100 z-10">
+      <div className="relative bg-[#F8FAFC] rounded-2xl shadow-2xl w-full max-w-[450px] p-10 border border-slate-200 z-10">
         <div className="flex flex-col items-center text-center">
-            <div className="mb-2 flex items-center justify-center p-3 bg-slate-50 rounded-2xl border border-slate-100 shadow-sm"><ShieldCheck size={32} className="text-[#005EB8]" /></div>
+            <div className="mb-2 flex items-center justify-center p-3 bg-white rounded-2xl border border-slate-100 shadow-sm"><ShieldCheck size={32} className="text-[#005EB8]" /></div>
             
             <h1 className="text-3xl font-extrabold text-slate-800 mt-4 mb-2">Instructor Access</h1>
             <p className="text-slate-500 text-sm mb-6 px-4">Secure login for faculty and administration.</p>
 
-            {/* ✅ SOCIAL LOGIN BUTTONS */}
+            {/* SOCIAL LOGIN */}
             <div className="flex gap-4 mb-6 w-full justify-center">
-                <button type="button" className="p-2.5 rounded-xl border border-slate-200 hover:bg-slate-50 transition-all shadow-sm"><GoogleIcon /></button>
-                <button type="button" className="p-2.5 rounded-xl border border-slate-200 hover:bg-slate-50 transition-all shadow-sm text-[#1877F2]"><Facebook size={20} fill="currentColor" strokeWidth={0} /></button>
-                <button type="button" className="p-2.5 rounded-xl border border-slate-200 hover:bg-slate-50 transition-all shadow-sm text-slate-800"><Github size={20} /></button>
-                <button type="button" className="p-2.5 rounded-xl border border-slate-200 hover:bg-slate-50 transition-all shadow-sm text-[#0A66C2]"><Linkedin size={20} fill="currentColor" strokeWidth={0} /></button>
+                <button type="button" className="p-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 transition-all shadow-sm"><GoogleIcon /></button>
+                <button type="button" className="p-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 transition-all shadow-sm text-[#1877F2]"><Facebook size={20} fill="currentColor" strokeWidth={0} /></button>
+                <button type="button" className="p-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 transition-all shadow-sm text-slate-800"><Github size={20} /></button>
+                <button type="button" className="p-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 transition-all shadow-sm text-[#0A66C2]"><Linkedin size={20} fill="currentColor" strokeWidth={0} /></button>
             </div>
 
             <div className="flex items-center w-full mb-6">
@@ -84,13 +85,13 @@ const AdminLogin = () => {
             </div>
 
             <form onSubmit={handleAuth} className="w-full space-y-5">
-                <div className={`flex items-center bg-slate-50 rounded-xl px-4 py-3.5 border border-slate-200 transition-all ${borderFocus}`}>
-                    <Mail className="text-slate-400 mr-3 shrink-0" size={20} />
+                <div className={`flex items-center bg-white rounded-xl px-4 py-3.5 border border-slate-200 transition-all ${borderFocus} shadow-sm`}>
+                    <Mail className="text-slate-400 mr-3 shrink-0" size={20} strokeWidth={1.5} />
                     <input type="email" name="email" placeholder="Instructor Email" required className="bg-transparent outline-none flex-1 text-sm font-medium text-slate-700 placeholder-slate-400" onChange={handleInputChange} />
                 </div>
 
-                <div className={`flex items-center bg-slate-50 rounded-xl px-4 py-3.5 border border-slate-200 transition-all ${borderFocus}`}>
-                    <Lock className="text-slate-400 mr-3 shrink-0" size={20} />
+                <div className={`flex items-center bg-white rounded-xl px-4 py-3.5 border border-slate-200 transition-all ${borderFocus} shadow-sm`}>
+                    <Lock className="text-slate-400 mr-3 shrink-0" size={20} strokeWidth={1.5} />
                     <input 
                         type={showPassword ? "text" : "password"} 
                         name="password" placeholder="Password" required
@@ -107,7 +108,7 @@ const AdminLogin = () => {
                 </button>
             </form>
 
-            <div className="mt-8 pt-6 border-t border-slate-100 w-full">
+            <div className="mt-8 pt-6 border-t border-slate-200 w-full">
                 <p className="text-xs text-slate-400 font-medium">Need an account? Contact the <span className={`font-bold cursor-pointer hover:underline ${gradientText}`}>University IT Admin</span>.</p>
             </div>
         </div>
