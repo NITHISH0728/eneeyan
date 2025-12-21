@@ -1,12 +1,13 @@
 import { useState, useEffect, useRef } from "react";
 import axios from "axios";
 import { useNavigate } from "react-router-dom";
+import Editor from "@monaco-editor/react"; // ✅ Professional Editor
 import { 
   LayoutDashboard, BookOpen, Compass, Award, Settings, LogOut, 
   TrendingUp, BookCheck, Trophy, PlayCircle, ShoppingBag, 
   User, Download, Clock, CreditCard, X, Lock, Save, CheckCircle, AlertCircle,
   Code, Play, Terminal, Monitor, AlertTriangle, Eye, ChevronRight, ChevronLeft,
-  Menu, Sparkles, Zap
+  Menu, Sparkles, Zap, Cpu
 } from "lucide-react";
 import { motion } from "framer-motion";
 
@@ -17,7 +18,7 @@ import "@tensorflow/tfjs-backend-webgl";
 
 // --- TYPES ---
 interface Course { id: number; title: string; description: string; price: number; image_url: string; instructor_id: number; }
-interface CodeTest { id: number; title: string; time_limit: number; problems: any[]; }
+interface CodeTest { id: number; title: string; time_limit: number; problems: any[]; completed?: boolean; }
 
 const StudentDashboard = () => {
   const navigate = useNavigate();
@@ -31,7 +32,6 @@ const StudentDashboard = () => {
   const [collapsed, setCollapsed] = useState(false);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   
-  // Use a fallback if user data isn't fetched yet
   const userData = { name: "Student", email: "student@iqmath.com" };
 
   // Modal & Settings
@@ -58,6 +58,7 @@ const StudentDashboard = () => {
   const [currentProblemIndex, setCurrentProblemIndex] = useState(0);
   const [solutions, setSolutions] = useState<{[key: number]: string}>({});
   const [userCode, setUserCode] = useState("");
+  const [language, setLanguage] = useState(71); // Python
   
   const [consoleOutput, setConsoleOutput] = useState("Ready to execute...");
   const [executionStatus, setExecutionStatus] = useState("idle"); 
@@ -68,6 +69,14 @@ const StudentDashboard = () => {
 
   const brand = { blue: "#005EB8", green: "#87C232", bg: "#f8fafc", border: "#e2e8f0", textMain: "#1e293b", textLight: "#64748b" };
 
+  // Language Options
+  const languages = [
+    { id: 71, name: "Python (3.8.1)", value: "python" },
+    { id: 62, name: "Java (OpenJDK 13)", value: "java" },
+    { id: 54, name: "C++ (GCC 9.2.0)", value: "cpp" },
+    { id: 63, name: "JavaScript (Node.js)", value: "javascript" },
+  ];
+
   useEffect(() => {
     const role = localStorage.getItem("role");
     if (role === "instructor") { navigate("/dashboard"); return; }
@@ -75,10 +84,11 @@ const StudentDashboard = () => {
     fetchCodeTests();
   }, [activeTab]);
 
-  // --- 🔒 PROCTORING ENGINE ---
+  // --- 🔒 PROCTORING ENGINE (Strict Mode) ---
   useEffect(() => {
       let aiInterval: any;
       if (activeTest) {
+          // Load saved state
           const savedWarns = localStorage.getItem(`warns_${activeTest.id}`);
           if (savedWarns) setFullScreenWarns(parseInt(savedWarns));
 
@@ -91,6 +101,7 @@ const StudentDashboard = () => {
               setUserCode("# Write your solution here...");
           }
 
+          // Timer
           const timer = setInterval(() => {
               setTimeLeft(prev => {
                   if (prev <= 1) { submitTest(); return 0; }
@@ -98,15 +109,18 @@ const StudentDashboard = () => {
               });
           }, 1000);
 
+          // 🚫 FULL SCREEN ENFORCEMENT
           const handleFullScreenChange = () => {
               if (!document.fullscreenElement) {
                   setIsFullScreen(false);
                   setFullScreenWarns(prev => {
                       const newCount = prev + 1;
                       localStorage.setItem(`warns_${activeTest.id}`, newCount.toString());
-                      if (newCount > 3) { 
+                      
+                      // ⚠️ TERMINATE IF > 2 VIOLATIONS (3rd Strike)
+                      if (newCount > 2) { 
                           submitTest(); 
-                          alert("🛑 TEST TERMINATED: Full-screen violation limit exceeded."); 
+                          alert("🛑 TEST TERMINATED: You exceeded the full-screen violation limit."); 
                       }
                       return newCount;
                   });
@@ -116,6 +130,7 @@ const StudentDashboard = () => {
           };
           document.addEventListener("fullscreenchange", handleFullScreenChange);
 
+          // 👁️ FACE DETECTION
           const setupAI = async () => {
               try {
                   await tf.setBackend('webgl'); 
@@ -142,7 +157,7 @@ const StudentDashboard = () => {
                       else if (predictions.length > 1) setFaceStatus("multiple"); 
                       else setFaceStatus("ok");
                   }
-              }, 100); 
+              }, 500); 
           };
 
           return () => {
@@ -187,46 +202,42 @@ const StudentDashboard = () => {
           const formData = new FormData(); formData.append("pass_key", passKeyInput);
           const res = await axios.post(`http://127.0.0.1:8000/api/v1/code-tests/${showPassKeyModal}/start`, formData, { headers: { Authorization: `Bearer ${token}` } });
           
+          // Check previous violations immediately
+          const prevWarns = localStorage.getItem(`warns_${res.data.id}`);
+          if (prevWarns && parseInt(prevWarns) > 2) {
+              alert("⛔ You have been disqualified from this test.");
+              return;
+          }
+
           setActiveTest(res.data);
           setTimeLeft(res.data.time_limit * 60);
           setShowPassKeyModal(null);
           
+          // Trigger Full Screen
           if (document.documentElement.requestFullscreen) {
               document.documentElement.requestFullscreen().catch((e) => alert("Please enable full screen manually."));
           }
       } catch(err) { triggerToast("Invalid Pass Key", "error"); }
   };
 
-  // --- 🛠️ FIX: REAL PDF DOWNLOAD (Backend) ---
   const handleDownloadCertificate = async (id: number, title: string) => { 
     setDownloadingId(id); 
     try {
         const token = localStorage.getItem("token");
-        // Request PDF as Blob (Binary Large Object)
         const response = await axios.get(`http://127.0.0.1:8000/api/v1/generate-pdf/${id}`, {
             headers: { Authorization: `Bearer ${token}` },
             responseType: 'blob' 
         });
-
-        // Create a temporary link to download the Blob
         const url = window.URL.createObjectURL(new Blob([response.data]));
         const link = document.createElement('a');
         link.href = url;
-        link.setAttribute('download', `Certificate-${title.replace(/\s+/g, "_")}.pdf`); // .pdf extension
+        link.setAttribute('download', `Certificate-${title.replace(/\s+/g, "_")}.pdf`);
         document.body.appendChild(link);
         link.click();
-        
-        // Cleanup
         link.remove();
         window.URL.revokeObjectURL(url);
-        
         triggerToast("Certificate Downloaded Successfully!");
-    } catch (err) {
-        console.error(err);
-        triggerToast("Failed to generate certificate. Server error.", "error");
-    } finally {
-        setDownloadingId(null);
-    }
+    } catch (err) { triggerToast("Failed to generate certificate.", "error"); } finally { setDownloadingId(null); }
   };
 
   // --- 💻 IDE ACTIONS ---
@@ -243,21 +254,27 @@ const StudentDashboard = () => {
       setConsoleOutput("🚀 Sending to compiler...");
       setShowHiddenCaseBtn(false); 
       setViewHiddenCase(false);
-      const sampleInput = "5"; 
+      
+      const currentProb = activeTest?.problems[currentProblemIndex];
+      const testCases = currentProb ? JSON.parse(currentProb.test_cases) : [];
+      const sampleInput = testCases[0]?.input || "5"; 
+
       try {
           const token = localStorage.getItem("token");
           const res = await axios.post("http://127.0.0.1:8000/api/v1/execute", {
               source_code: userCode,
+              language_id: language,
               stdin: sampleInput
           }, { headers: { Authorization: `Bearer ${token}` } });
+          
           const output = res.data.stdout || res.data.stderr || res.data.compile_output || "No output";
-          const statusId = res.data.status?.id;
-          if (statusId === 3) {
+          
+          if (res.data.status?.id === 3) {
               setExecutionStatus("success");
               setConsoleOutput(`✅ Execution Successful:\n\n${output}`);
           } else {
               setExecutionStatus("error");
-              setConsoleOutput(`❌ Execution Error (Status: ${res.data.status?.description})\n\n${output}\n\n[System]: Hidden test case unlocked.`);
+              setConsoleOutput(`❌ Execution Error (Status: ${res.data.status?.description})\n\n${output}`);
               setShowHiddenCaseBtn(true);
           }
       } catch (err: any) {
@@ -301,7 +318,6 @@ const StudentDashboard = () => {
       } catch(err) { console.error(err); }
   };
 
-  // --- UTILS ---
   const triggerToast = (message: string, type: "success" | "error" = "success") => {
     setToast({ show: true, message, type });
     setTimeout(() => setToast({ ...toast, show: false }), 3000); 
@@ -310,125 +326,195 @@ const StudentDashboard = () => {
   const openEnrollModal = (course: Course) => { setSelectedCourse(course); setShowModal(true); };
   const handlePayment = async (courseId: number, price: number) => {
     try {
-        // A. Create Order on Backend
         const orderUrl = "http://127.0.0.1:8000/api/v1/create-order";
         const { data } = await axios.post(orderUrl, { amount: price }); 
-
-        // B. Configuration for Razorpay
         const options = {
-            key: "rzp_test_Ru8lDcv8KvAiC0", // ✅ YOUR REAL KEY
+            key: "rzp_test_Ru8lDcv8KvAiC0", 
             amount: data.amount,
             currency: "INR",
             name: "iQmath Pro",
             description: "Lifetime Course Access",
             order_id: data.id, 
-            handler: async function (response: any) {
-                alert(`Payment Successful! Payment ID: ${response.razorpay_payment_id}`);
-                // Optional: Call an API here to enroll the student immediately
-            },
-            prefill: {
-                name: "Student Name",
-                email: "student@example.com",
-                contact: "9999999999"
-            },
-            theme: {
-                color: "#87C232"
-            }
+            handler: async function (response: any) { alert(`Payment Successful! Payment ID: ${response.razorpay_payment_id}`); },
+            prefill: { name: "Student Name", email: "student@example.com", contact: "9999999999" },
+            theme: { color: "#87C232" }
         };
-
-        // C. Open Window
         const rzp1 = new (window as any).Razorpay(options);
         rzp1.open();
-
-    } catch (error) {
-        console.error("Payment Error:", error);
-        alert("Payment failed. Check backend console.");
-    }
-};
+    } catch (error) { alert("Payment failed. Check backend console."); }
+  };
+  
   const handleTrialParams = async () => { if (!selectedCourse) return; setProcessing(true); try { const token = localStorage.getItem("token"); await axios.post(`http://127.0.0.1:8000/api/v1/enroll/${selectedCourse.id}`, { type: "trial" }, { headers: { Authorization: `Bearer ${token}` } }); triggerToast("Trial Activated!"); setShowModal(false); setActiveTab("learning"); fetchData(); } catch(e){ triggerToast("Error", "error"); } finally { setProcessing(false); }};
   const handlePasswordChange = async (e: React.FormEvent) => { e.preventDefault(); triggerToast("Password Updated!"); setSavingSettings(false); };
   const handleLogout = () => { localStorage.clear(); navigate("/"); };
 
   // ============================================
-  // 🔥 CODE ARENA UI
+  // 🔥 UPDATED: PROFESSIONAL CODE ARENA UI
   // ============================================
   if (activeTest) {
       const currentProbData = activeTest.problems[currentProblemIndex];
+      const testCases = currentProbData ? JSON.parse(currentProbData.test_cases) : [];
+
       return (
-          <div style={{ height: "100vh", background: "#0d1117", color: "#c9d1d9", display: "flex", flexDirection: "column", fontFamily: "'Fira Code', monospace", overflow: "hidden" }}>
-              <div style={{ height: "50px", background: "#161b22", borderBottom: "1px solid #30363d", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 20px" }}>
-                  <div style={{display: "flex", alignItems: "center", gap: "15px"}}>
-                      <Code size={18} color="#58a6ff" />
-                      <h3 style={{margin: 0, fontSize: "14px", color: "white"}}>iQmath Code Arena</h3>
-                      <div style={{width: "1px", height: "15px", background: "#30363d"}}></div>
-                      <span style={{fontSize: "13px", fontWeight: "bold"}}>{activeTest.title}</span>
+          <div className="flex flex-col h-screen bg-[#F8FAFC] font-sans overflow-hidden">
+              {/* TOP HEADER */}
+              <div className="h-14 bg-white border-b border-slate-200 flex items-center justify-between px-6 shadow-sm z-10">
+                  <div className="flex items-center gap-4">
+                      <div className="flex items-center gap-2 text-slate-800 font-extrabold text-lg">
+                          <Code className="text-blue-600" /> iQmath <span className="text-slate-400 font-normal">Arena</span>
+                      </div>
+                      <div className="h-6 w-px bg-slate-200"></div>
+                      <h3 className="text-sm font-bold text-slate-700">{activeTest.title}</h3>
                   </div>
-                  <div style={{display: "flex", gap: "5px"}}>
-                      {activeTest.problems.map((_: any, idx: number) => (
-                          <button key={idx} onClick={() => switchQuestion(idx)} style={{ padding: "5px 10px", borderRadius: "4px", fontSize: "12px", border: "none", cursor: "pointer", background: idx === currentProblemIndex ? "#1f6feb" : "#21262d", color: idx === currentProblemIndex ? "white" : "#8b949e", fontWeight: idx === currentProblemIndex ? "bold" : "normal" }}>Q{idx + 1}</button>
+
+                  <div className="flex items-center gap-2">
+                      {activeTest.problems.map((_, idx) => (
+                          <button key={idx} onClick={() => switchQuestion(idx)} className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${idx === currentProblemIndex ? "bg-blue-600 text-white shadow-md" : "bg-slate-100 text-slate-500 hover:bg-slate-200"}`}>
+                              Q{idx + 1}
+                          </button>
                       ))}
                   </div>
-                  <div style={{ display: "flex", alignItems: "center", gap: "15px" }}>
-                      <div style={{ color: timeLeft < 300 ? "#ff7b72" : "#e6edf3", fontWeight: "bold", background: "#0d1117", padding: "4px 12px", borderRadius: "4px", border: "1px solid #30363d", fontSize: "13px", display: "flex", alignItems: "center", gap: "6px" }}>
+
+                  <div className="flex items-center gap-4">
+                      <div className={`px-3 py-1.5 rounded-lg border font-mono text-sm font-bold flex items-center gap-2 ${timeLeft < 300 ? "bg-red-50 border-red-200 text-red-600 animate-pulse" : "bg-slate-50 border-slate-200 text-slate-700"}`}>
                           <Clock size={14} /> {Math.floor(timeLeft / 60)}:{(timeLeft % 60).toString().padStart(2, "0")}
                       </div>
-                      <button onClick={submitTest} style={{ background: "#238636", border: "none", padding: "6px 16px", borderRadius: "4px", color: "white", cursor: "pointer", fontWeight: "bold", fontSize: "12px" }}>Finish Test</button>
+                      <button onClick={submitTest} className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-xs font-bold transition-colors">Finish Test</button>
                   </div>
               </div>
-              <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
-                  <div style={{ width: "350px", display: "flex", flexDirection: "column", borderRight: "1px solid #30363d" }}>
-                      <div style={{ flex: 1, overflowY: "auto", padding: "20px", background: "#0d1117" }}>
-                          <div style={{borderBottom: "1px solid #30363d", paddingBottom: "10px", marginBottom: "15px"}}>
-                              <h2 style={{margin: "0 0 5px 0", color: "white", fontSize: "18px"}}>Problem {currentProblemIndex + 1}: {currentProbData?.title}</h2>
-                              <span style={{fontSize: "11px", background: "#30363d", padding: "2px 6px", borderRadius: "4px", color: "#58a6ff"}}>Medium</span>
+
+              {/* MAIN SPLIT LAYOUT */}
+              <div className="flex flex-1 overflow-hidden p-4 gap-4">
+                  
+                  {/* LEFT COLUMN (40%) */}
+                  <div className="w-[40%] flex flex-col gap-4">
+                      {/* Problem Description Card */}
+                      <div className="flex-1 bg-white rounded-xl shadow-sm border border-slate-200 p-6 overflow-y-auto">
+                          <div className="flex justify-between items-start mb-4 border-b border-slate-100 pb-3">
+                              <h2 className="text-xl font-bold text-slate-800">{currentProbData?.title}</h2>
+                              <span className="bg-blue-50 text-blue-600 text-[10px] font-bold px-2 py-1 rounded border border-blue-100">MEDIUM</span>
                           </div>
-                          <p style={{fontSize: "13px", lineHeight: "1.6", color: "#8b949e", marginBottom: "20px"}}>{currentProbData?.description || "No description available."}</p>
-                          <div style={{background: "#161b22", padding: "12px", borderRadius: "6px", marginBottom: "15px"}}><div style={{fontSize: "11px", fontWeight: "bold", color: "#8b949e", marginBottom: "5px"}}>INPUT FORMAT</div><code style={{fontSize: "12px", color: "#e6edf3"}}>String S</code></div>
-                          <div style={{background: "#161b22", padding: "12px", borderRadius: "6px"}}><div style={{fontSize: "11px", fontWeight: "bold", color: "#8b949e", marginBottom: "5px"}}>OUTPUT FORMAT</div><code style={{fontSize: "12px", color: "#e6edf3"}}>Reversed String</code></div>
+                          <p className="text-slate-600 text-sm leading-relaxed mb-6 whitespace-pre-wrap">{currentProbData?.description || "No description available."}</p>
+                          
+                          <div className="bg-slate-50 rounded-lg p-4 border border-slate-100">
+                              <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">Example Case</h4>
+                              {testCases.length > 0 && (
+                                  <div className="space-y-3">
+                                      <div>
+                                          <div className="text-[10px] font-bold text-slate-500 mb-1">INPUT</div>
+                                          <code className="block bg-white border border-slate-200 p-2 rounded text-xs font-mono text-slate-700">{testCases[0].input}</code>
+                                      </div>
+                                      <div>
+                                          <div className="text-[10px] font-bold text-slate-500 mb-1">OUTPUT</div>
+                                          <code className="block bg-white border border-slate-200 p-2 rounded text-xs font-mono text-slate-700">{testCases[0].output}</code>
+                                      </div>
+                                  </div>
+                              )}
+                          </div>
                       </div>
-                      <div style={{ height: "220px", background: "#161b22", borderTop: "1px solid #30363d", padding: "15px" }}>
-                          <div style={{display: "flex", justifyContent: "space-between", marginBottom: "10px"}}>
-                              <span style={{fontSize: "11px", fontWeight: "bold", color: faceStatus !== "ok" ? "#ff7b72" : "#3fb950", display: "flex", alignItems: "center", gap: "6px"}}><div style={{width: "6px", height: "6px", borderRadius: "50%", background: faceStatus !== "ok" ? "#ff7b72" : "#3fb950"}}></div>{faceStatus === "ok" ? "AI MONITORING ACTIVE" : faceStatus === "missing" ? "FACE MISSING" : "MULTIPLE FACES"}</span>
-                              <span style={{fontSize: "11px", color: fullScreenWarns > 0 ? "#ff7b72" : "#8b949e"}}>Warnings: {fullScreenWarns}/3</span>
+
+                      {/* Webcam Proctoring */}
+                      <div className="h-[200px] shrink-0 bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden relative">
+                          <div className="absolute top-3 left-3 z-10 flex items-center gap-2">
+                              <div className={`px-2 py-1 rounded text-[10px] font-bold text-white flex items-center gap-1 ${faceStatus === "ok" ? "bg-green-500" : "bg-red-500"}`}>
+                                  <div className="w-1.5 h-1.5 bg-white rounded-full animate-pulse"></div>
+                                  {faceStatus === "ok" ? "PROCTORING ACTIVE" : "WARNING"}
+                              </div>
+                              <div className="px-2 py-1 rounded bg-black/50 text-white text-[10px] font-bold">Warn: {fullScreenWarns}/3</div>
                           </div>
-                          <div style={{ position: "relative", width: "100%", height: "150px", background: "black", borderRadius: "6px", overflow: "hidden", border: faceStatus !== "ok" ? "2px solid #ff7b72" : "1px solid #30363d" }}>
-                              <video ref={videoRef} autoPlay muted style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-                              {faceStatus !== "ok" && (<div style={{position: "absolute", inset: 0, background: "rgba(255, 0, 0, 0.4)", display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", color: "white", textAlign: "center"}}><AlertTriangle size={32} /><span style={{fontSize: "12px", fontWeight: "bold", marginTop: "5px"}}>{faceStatus === "missing" ? "FACE NOT DETECTED" : "MULTIPLE PEOPLE DETECTED"}</span></div>)}
-                          </div>
+                          <video ref={videoRef} autoPlay muted className="w-full h-full object-cover transform scale-x-[-1]" />
+                          {faceStatus !== "ok" && (
+                              <div className="absolute inset-0 bg-red-500/20 backdrop-blur-sm flex items-center justify-center flex-col text-center p-4">
+                                  <AlertTriangle className="text-red-600 mb-2" size={32} />
+                                  <span className="bg-white text-red-600 px-3 py-1 rounded-full text-xs font-bold shadow-lg">
+                                      {faceStatus === "missing" ? "FACE NOT DETECTED" : "MULTIPLE FACES DETECTED"}
+                                  </span>
+                              </div>
+                          )}
                       </div>
                   </div>
-                  <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
-                      <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
-                          <div style={{ height: "36px", background: "#161b22", borderBottom: "1px solid #30363d", display: "flex", alignItems: "center", padding: "0 15px", gap: "15px" }}>
-                              <span style={{fontSize: "12px", color: "#e6edf3", borderBottom: "2px solid #f78166", padding: "8px 0"}}>main.py</span>
-                              <span style={{fontSize: "12px", color: "#8b949e"}}>solution.py</span>
+
+                  {/* RIGHT COLUMN (60%) */}
+                  <div className="w-[60%] flex flex-col gap-4">
+                      
+                      {/* Top: Monaco Code Editor */}
+                      <div className="flex-[2.5] bg-white rounded-xl shadow-sm border border-slate-200 flex flex-col overflow-hidden">
+                          <div className="bg-slate-50 border-b border-slate-200 h-10 flex items-center justify-between px-4">
+                              <div className="flex items-center gap-2 text-xs font-bold text-slate-600">
+                                  <Code size={14} /> Editor
+                              </div>
+                              <select 
+                                  value={language} 
+                                  onChange={(e) => setLanguage(parseInt(e.target.value))} 
+                                  className="bg-white border border-slate-300 text-xs rounded px-2 py-0.5 outline-none focus:border-blue-500 cursor-pointer"
+                              >
+                                  {languages.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+                              </select>
                           </div>
-                          <textarea value={userCode} onChange={(e) => setUserCode(e.target.value)} spellCheck="false" style={{ width: "100%", height: "100%", background: "#0d1117", color: "#e6edf3", border: "none", fontSize: "14px", resize: "none", padding: "20px", fontFamily: "'Fira Code', monospace", outline: "none", lineHeight: "1.5" }} />
+                          <div className="flex-1 pt-2">
+                              <Editor
+                                  height="100%"
+                                  defaultLanguage="python"
+                                  language={languages.find(l => l.id === language)?.value}
+                                  theme="light"
+                                  value={userCode}
+                                  onChange={(val) => setUserCode(val || "")}
+                                  options={{ minimap: { enabled: false }, fontSize: 14, scrollBeyondLastLine: false, padding: { top: 10 } }}
+                              />
+                          </div>
                       </div>
-                      <div style={{ height: "220px", background: "#0d1117", borderTop: "1px solid #30363d", display: "flex", flexDirection: "column" }}>
-                          <div style={{ height: "35px", background: "#161b22", borderBottom: "1px solid #30363d", display: "flex", alignItems: "center", padding: "0 15px", justifyContent: "space-between" }}>
-                              <div style={{display: "flex", gap: "10px", alignItems: "center"}}><Terminal size={14} color="#8b949e" /><span style={{fontSize: "12px", fontWeight: "bold", color: "#8b949e"}}>CONSOLE</span></div>
-                              <div style={{display: "flex", gap: "10px"}}>{showHiddenCaseBtn && (<button onClick={() => setViewHiddenCase(true)} style={{ background: "#21262d", border: "1px solid #30363d", color: "#e6edf3", fontSize: "11px", padding: "4px 10px", borderRadius: "4px", cursor: "pointer", display: "flex", alignItems: "center", gap: "5px" }}><Eye size={12} /> Show Hidden Case</button>)}</div>
+
+                      {/* Bottom: Console & Controls */}
+                      <div className="flex-[1.5] flex flex-col gap-4">
+                          <div className="flex-[1.3] bg-slate-900 rounded-xl shadow-sm border border-slate-800 flex flex-col overflow-hidden">
+                              <div className="bg-slate-950 h-8 flex items-center px-4 border-b border-slate-800 text-[10px] font-bold text-slate-400 uppercase tracking-wider gap-2">
+                                  <Terminal size={12} /> Console Output
+                              </div>
+                              <div className="flex-1 p-4 font-mono text-xs text-green-400 overflow-y-auto whitespace-pre-wrap">
+                                  {consoleOutput}
+                              </div>
                           </div>
-                          <div style={{ flex: 1, padding: "15px", overflowY: "auto", fontFamily: "monospace", fontSize: "13px" }}>
-                              <div style={{ color: executionStatus === "error" ? "#ff7b72" : "#e6edf3", whiteSpace: "pre-wrap" }}>{consoleOutput}</div>
-                              {viewHiddenCase && (<div style={{ marginTop: "10px", padding: "10px", background: "#161b22", borderLeft: "3px solid #a371f7", borderRadius: "0 4px 4px 0" }}><div style={{color: "#a371f7", fontWeight: "bold", marginBottom: "5px"}}>HIDDEN TEST CASE 1</div><div style={{color: "#8b949e"}}>Input: <span style={{color: "#e6edf3"}}>[10, 20, -5]</span></div><div style={{color: "#8b949e"}}>Expected Output: <span style={{color: "#e6edf3"}}>25</span></div></div>)}
-                          </div>
-                          <div style={{ height: "50px", background: "#161b22", borderTop: "1px solid #30363d", display: "flex", alignItems: "center", justifyContent: "flex-end", padding: "0 20px", gap: "12px" }}>
-                              <button onClick={handleSave} style={{ background: "transparent", border: "1px solid #30363d", color: "#c9d1d9", padding: "8px 16px", borderRadius: "6px", cursor: "pointer", fontSize: "13px", fontWeight: "600", display: "flex", alignItems: "center", gap: "6px" }}><Save size={14} /> Save Code</button>
-                              <button onClick={handleRun} style={{ background: "#1f6feb", border: "none", color: "white", padding: "8px 24px", borderRadius: "6px", cursor: "pointer", fontSize: "13px", fontWeight: "600", display: "flex", alignItems: "center", gap: "6px" }}><Play size={14} fill="white" /> Run Code</button>
+
+                          <div className="h-12 flex gap-3">
+                              <button onClick={handleSave} className="flex-1 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 font-bold rounded-lg flex items-center justify-center gap-2 transition-all shadow-sm">
+                                  <Save size={16} /> Save Code
+                              </button>
+                              <button onClick={handleRun} className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg flex items-center justify-center gap-2 transition-all shadow-sm">
+                                  {executionStatus === "running" ? <Cpu className="animate-spin" size={16} /> : <Play size={16} />} 
+                                  {executionStatus === "running" ? "Running..." : "Run Code"}
+                              </button>
                           </div>
                       </div>
                   </div>
               </div>
-              {!isFullScreen && (<div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.98)", zIndex: 10000, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}><AlertTriangle size={80} color="#ff7b72" style={{marginBottom: "30px", animation: "pulse 2s infinite"}} /><h1 style={{color: "#ff7b72", margin: "0 0 10px 0", fontSize: "36px", letterSpacing: "1px"}}>TEST INTERRUPTED</h1><p style={{color: "#8b949e", fontSize: "18px", maxWidth: "600px", textAlign: "center", lineHeight: "1.6"}}>You have exited full-screen mode. This is a proctoring violation.<br/>Your attempt has been logged.<br/><br/><span style={{color: "white", fontWeight: "bold"}}>Remaining Warnings: {3 - fullScreenWarns}</span></p><button onClick={returnToFullScreen} style={{ marginTop: "40px", padding: "16px 40px", background: "#ff7b72", color: "#1a0505", border: "none", borderRadius: "8px", fontSize: "16px", fontWeight: "800", cursor: "pointer", display: "flex", alignItems: "center", gap: "10px", textTransform: "uppercase", letterSpacing: "1px" }}><Monitor size={20} /> Return to Full Screen</button></div>)}
+
+              {/* 🛑 TEST INTERRUPTED OVERLAY (Proctoring) */}
+              {!isFullScreen && (
+                  <div className="fixed inset-0 bg-slate-900/95 z-[9999] flex flex-col items-center justify-center text-center p-8">
+                      <AlertTriangle size={64} className="text-red-500 mb-6 animate-bounce" />
+                      <h1 className="text-3xl font-bold text-white mb-2 tracking-widest uppercase text-red-500">Test Interrupted</h1>
+                      <p className="text-slate-400 max-w-md mb-8 text-lg">
+                          You have exited full-screen mode. This is a proctoring violation.
+                          <br/><span className="text-slate-500 text-sm">Your attempt has been logged.</span>
+                      </p>
+                      <div className="bg-red-500/10 text-red-400 px-6 py-3 rounded-lg font-mono font-bold mb-8 border border-red-500/30 text-xl">
+                          Remaining Warnings: {2 - fullScreenWarns}
+                      </div>
+                      <button 
+                          onClick={returnToFullScreen} 
+                          className="bg-red-500 hover:bg-red-600 text-white px-8 py-4 rounded-xl font-bold transition-all shadow-lg shadow-red-900/20 flex items-center gap-2"
+                      >
+                          <Monitor size={20} /> RETURN TO FULL SCREEN
+                      </button>
+                  </div>
+              )}
           </div>
       );
   }
 
-  // --- DASHBOARD LAYOUT & COMPONENTS ---
+  // --- DASHBOARD LAYOUT & COMPONENTS (Rest of file unchanged) ---
   const SidebarItem = ({ icon, label, active, onClick }: any) => (
-    <button onClick={onClick} title={collapsed ? label : ""} style={{ display: "flex", alignItems: "center", justifyContent: collapsed ? "center" : "flex-start", gap: "12px", width: "100%", padding: "12px 16px", border: "none", borderRadius: "10px", background: active ? `${brand.blue}10` : "transparent", color: active ? brand.blue : brand.textLight, fontWeight: active ? "700" : "500", cursor: "pointer", transition: "all 0.2s" }}>
+    <button onClick={onClick} title={collapsed ? label : ""} style={{ display: "flex", alignItems: "center", justifyContent: collapsed ? "center" : "flex-start", gap: "12px", width: "100%", padding: "12px 16px", border: "none", borderRadius: "100px", background: active ? `${brand.blue}10` : "transparent", color: active ? brand.blue : brand.textLight, fontWeight: active ? "700" : "500", cursor: "pointer", transition: "all 0.2s" }}>
       {icon} {!collapsed && <span style={{ fontSize: "15px" }}>{label}</span>}
     </button>
   );

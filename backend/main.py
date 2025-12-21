@@ -321,11 +321,41 @@ def create_code_test(test: CodeTestCreate, db: Session = Depends(get_db), curren
 
 @app.get("/api/v1/code-tests")
 def get_code_tests(db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
-    if current_user.role == "instructor": return db.query(models.CodeTest).filter(models.CodeTest.instructor_id == current_user.id).all()
-    return db.query(models.CodeTest).all()
+    if current_user.role == "instructor": 
+        return db.query(models.CodeTest).filter(models.CodeTest.instructor_id == current_user.id).all()
+    
+    # For Students: Check if they completed it
+    tests = db.query(models.CodeTest).all()
+    response_data = []
+    
+    for t in tests:
+        # Check if a result exists for this student & test
+        submission = db.query(models.TestResult).filter(
+            models.TestResult.test_id == t.id, 
+            models.TestResult.user_id == current_user.id
+        ).first()
+        
+        response_data.append({
+            "id": t.id,
+            "title": t.title,
+            "time_limit": t.time_limit,
+            "problems": t.problems, # Serialize problems if needed, or keep simple
+            "completed": True if submission else False # ✅ FLAG FOR FRONTEND
+        })
+        
+    return response_data
 
 @app.post("/api/v1/code-tests/{test_id}/start")
-def start_code_test(test_id: int, pass_key: str = Form(...), db: Session = Depends(get_db)):
+def start_code_test(test_id: int, pass_key: str = Form(...), db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
+    # ✅ SECURITY CHECK: Prevent Re-entry
+    existing_result = db.query(models.TestResult).filter(
+        models.TestResult.test_id == test_id, 
+        models.TestResult.user_id == current_user.id
+    ).first()
+    
+    if existing_result:
+        raise HTTPException(status_code=403, detail="Test already submitted. You cannot retake it.")
+
     test = db.query(models.CodeTest).filter(models.CodeTest.id == test_id).first()
     if not test: raise HTTPException(status_code=404, detail="Test not found")
     if test.pass_key != pass_key: raise HTTPException(status_code=403, detail="Invalid Pass Key")
