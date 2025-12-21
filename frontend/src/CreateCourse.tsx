@@ -1,19 +1,24 @@
 import { useState } from "react";
 import axios from "axios";
 import { useNavigate } from "react-router-dom";
-import { Save, Image as ImageIcon, IndianRupee, ArrowLeft } from "lucide-react";
+import { Save, Image as ImageIcon, IndianRupee, ArrowLeft, Clock } from "lucide-react";
 
 const CreateCourse = () => {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
+  
+  // ✅ Added 'duration' to state
   const [formData, setFormData] = useState({
     title: "",
     description: "",
     price: "",
-    image_url: ""
+    image_url: "",
+    duration: "" 
   });
 
-  // 🎨 Brand Colors (Consistent with iQmath Dashboard)
+  // ✅ Added 'isFree' toggle state
+  const [isFree, setIsFree] = useState(false);
+
   const brand = {
     blue: "#005EB8",
     border: "#e2e8f0",
@@ -29,13 +34,18 @@ const CreateCourse = () => {
     try {
       const token = localStorage.getItem("token");
       
-      // ✅ FIX: Defining 'response' during the await call to avoid ReferenceError
+      // ✅ Construct Description with Duration (Safe way to save it without backend changes)
+      const finalDescription = formData.duration 
+        ? `${formData.description}\n\n[Duration: ${formData.duration}]` 
+        : formData.description;
+
       const response = await axios.post(
         "http://127.0.0.1:8000/api/v1/courses", 
         {
           title: formData.title,
-          description: formData.description,
-          price: parseInt(formData.price),
+          description: finalDescription,
+          // ✅ Logic: If Free is checked, send 0, otherwise send entered price
+          price: isFree ? 0 : parseInt(formData.price),
           image_url: formData.image_url
         },
         {
@@ -43,7 +53,6 @@ const CreateCourse = () => {
         }
       );
 
-      // ✅ Redirecting straight to the Builder using the safe ID from response
       alert("Course Created Successfully! 🎉 Let's add some content.");
       const newCourseId = response.data.id;
       navigate(`/dashboard/course/${newCourseId}/builder`);
@@ -51,11 +60,11 @@ const CreateCourse = () => {
     } catch (error: any) {
       console.error(error);
       if (error.response?.status === 403) {
-        alert("Access Denied: You must be logged in as an Instructor to create courses.");
+        alert("Access Denied: You must be logged in as an Instructor.");
       } else if (error.response?.status === 401) {
         alert("Session expired. Please login again.");
       } else {
-        alert("Failed to create course. Please ensure your backend is running.");
+        alert("Failed to create course. Ensure backend is running.");
       }
     } finally {
       setLoading(false);
@@ -65,7 +74,6 @@ const CreateCourse = () => {
   return (
     <div style={{ maxWidth: "800px", margin: "0 auto", animation: "fadeIn 0.5s ease" }}>
       
-      {/* 📄 Page Header */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "30px" }}>
         <div>
           <h2 style={{ fontSize: "26px", fontWeight: "700", color: brand.textMain, marginBottom: "8px" }}>Create New Course</h2>
@@ -79,7 +87,6 @@ const CreateCourse = () => {
         </button>
       </div>
 
-      {/* 📝 The Form Card */}
       <div style={{ 
         background: "white", 
         padding: "40px", 
@@ -90,7 +97,7 @@ const CreateCourse = () => {
         
         <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "28px" }}>
           
-          {/* Title Input */}
+          {/* Title */}
           <div>
             <label style={labelStyle}>Course Title</label>
             <input 
@@ -103,7 +110,7 @@ const CreateCourse = () => {
             />
           </div>
 
-          {/* Description Input */}
+          {/* Description */}
           <div>
             <label style={labelStyle}>Description</label>
             <textarea 
@@ -116,24 +123,61 @@ const CreateCourse = () => {
             />
           </div>
 
-          {/* Price & Image Row */}
+          {/* ✅ FEATURE 1: COURSE DURATION */}
+          <div>
+            <label style={labelStyle}>Total Course Duration</label>
+            <div style={{ position: "relative" }}>
+              <Clock size={16} style={iconOverlayStyle} />
+              <input 
+                type="text" 
+                placeholder="e.g. 12 Hours 30 Mins"
+                value={formData.duration}
+                onChange={(e) => setFormData({...formData, duration: e.target.value})}
+                style={{ ...inputStyle, paddingLeft: "40px" }}
+              />
+            </div>
+          </div>
+
           <div style={{ display: "flex", gap: "24px" }}>
             
+            {/* Price Input */}
             <div style={{ flex: 1 }}>
               <label style={labelStyle}>Price (INR)</label>
               <div style={{ position: "relative" }}>
-                <IndianRupee size={16} style={iconOverlayStyle} />
+                <IndianRupee size={16} style={{...iconOverlayStyle, opacity: isFree ? 0.5 : 1}} />
                 <input 
                   type="number" 
                   placeholder="999"
-                  value={formData.price}
+                  value={isFree ? 0 : formData.price}
                   onChange={(e) => setFormData({...formData, price: e.target.value})}
-                  required
-                  style={{ ...inputStyle, paddingLeft: "40px" }}
+                  required={!isFree} // Not required if free
+                  disabled={isFree} // Disable if free is checked
+                  style={{ 
+                    ...inputStyle, 
+                    paddingLeft: "40px",
+                    background: isFree ? "#f1f5f9" : "#f8fafc",
+                    color: isFree ? "#94a3b8" : "#1e293b",
+                    cursor: isFree ? "not-allowed" : "text"
+                  }}
                 />
+              </div>
+
+              {/* ✅ FEATURE 2: SET AS FREE BUTTON */}
+              <div style={{ marginTop: "12px", display: "flex", alignItems: "center", gap: "10px" }}>
+                <input 
+                  type="checkbox" 
+                  id="freeCourse"
+                  checked={isFree} 
+                  onChange={(e) => setIsFree(e.target.checked)}
+                  style={{ width: "18px", height: "18px", cursor: "pointer", accentColor: brand.blue }}
+                />
+                <label htmlFor="freeCourse" style={{ fontSize: "14px", color: "#475569", cursor: "pointer", userSelect: "none", fontWeight: "500" }}>
+                  Set as <strong>Free Course</strong>
+                </label>
               </div>
             </div>
 
+            {/* Thumbnail URL */}
             <div style={{ flex: 1 }}>
               <label style={labelStyle}>Thumbnail URL (Optional)</label>
               <div style={{ position: "relative" }}>
@@ -174,6 +218,7 @@ const CreateCourse = () => {
                 boxShadow: "0 4px 12px rgba(0, 94, 184, 0.2)"
               }}
             >
+              <Save size={18} />
               {loading ? "Creating..." : "Create & Build Curriculum"}
             </button>
           </div>

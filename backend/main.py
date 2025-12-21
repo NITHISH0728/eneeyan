@@ -12,6 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 import io
 import json
+import shutil
 import os
 import random
 import string
@@ -502,6 +503,36 @@ def create_payment_order(data: dict = Body(...)):
 
     order = client.order.create(data=order_data)
     return order
+@app.post("/api/v1/submit-assignment")
+async def submit_assignment(
+    file: UploadFile = File(...),
+    course_title: str = Form(...),
+    lesson_title: str = Form(...),
+    current_user: models.User = Depends(get_current_user)
+):
+    # 1. Create a tidy folder structure: "assignments/student_email/CourseName"
+    base_folder = "assignments"
+    
+    # Sanitize email (replace @ and . with _)
+    safe_email = current_user.email.replace("@", "_at_").replace(".", "_")
+    student_folder = f"{base_folder}/{safe_email}_{current_user.id}"
+    
+    # Sanitize folder names to prevent errors with spaces/special chars
+    safe_course = "".join([c for c in course_title if c.isalnum() or c in (' ', '-', '_')]).strip()
+    safe_lesson = "".join([c for c in lesson_title if c.isalnum() or c in (' ', '-', '_')]).strip()
+    
+    course_folder = f"{student_folder}/{safe_course}"
+    
+    # Create directory if it doesn't exist
+    os.makedirs(course_folder, exist_ok=True)
+    
+    # 2. Save the file
+    file_path = f"{course_folder}/{safe_lesson}_{file.filename}"
+    
+    with open(file_path, "wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
+        
+    return {"message": "Assignment received successfully", "path": file_path}
 
 @app.get("/")
 def read_root(): return {"status": "online", "message": "iQmath API Active 🟢"}

@@ -277,23 +277,52 @@ const CourseBuilder = () => {
                     </div>
                 </div>
             ) : (
-                /* 🧩 STANDARD FORM */
+                /* 🧩 STANDARD FORM (UPDATED FOR ASSIGNMENT) */
                 <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
                     <div>
                         <label style={labelStyle}>{activeModal === "Heading" ? "Heading Name" : "Item Title"}</label>
                         <input value={itemTitle} onChange={(e) => setItemTitle(e.target.value)} placeholder="e.g. Phase 1: Basics" style={inputStyle} />
                     </div>
+                    
+                    {activeModal === "Assignment" && (
+                        <div>
+                            <label style={labelStyle}>Description (Optional)</label>
+                            <textarea 
+                                rows={3} 
+                                value={itemInstructions} 
+                                onChange={(e) => setItemInstructions(e.target.value)} 
+                                placeholder="Explain what students need to do..." 
+                                style={{ ...inputStyle, resize: "vertical" }} 
+                            />
+                        </div>
+                    )}
+
                     {activeModal !== "Heading" && (
                         <>
                         <div>
                             <label style={labelStyle}>
-                                {activeModal === "Note" || activeModal === "Assignment" ? "Google Drive PDF Link" : "YouTube / Form Link"}
+                                {activeModal === "Assignment" ? "Submission Drive Link (Google Form/Folder)" : 
+                                 activeModal === "Note" ? "Google Drive PDF Link" : "YouTube / Form Link"}
                             </label>
                             <div style={{ position: "relative" }}>
                                 <Link size={18} style={{ position: "absolute", left: "14px", top: "14px", color: brand.textLight }} />
                                 <input value={itemUrl} onChange={(e) => setItemUrl(e.target.value)} placeholder="https://..." style={{ ...inputStyle, paddingLeft: "45px" }} />
                             </div>
                         </div>
+                        
+                        {activeModal === "Assignment" && (
+                            <div style={{ display: "flex", alignItems: "center", gap: "10px", marginTop: "5px" }}>
+                                <input 
+                                    type="checkbox" 
+                                    id="mandatoryCheck"
+                                    checked={isMandatory}
+                                    onChange={(e) => setIsMandatory(e.target.checked)}
+                                    style={{ width: "18px", height: "18px", cursor: "pointer" }}
+                                />
+                                <label htmlFor="mandatoryCheck" style={{ fontSize: "14px", color: "#475569", fontWeight: "600", cursor: "pointer" }}>Mark as Mandatory</label>
+                            </div>
+                        )}
+
                         {activeModal === "Live Test" && (
                             <div>
                                 <label style={labelStyle}>Test Duration (Minutes)</label>

@@ -1,14 +1,15 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import axios from "axios";
-import Editor from "@monaco-editor/react"; // Professional Editor
-// @ts-ignore
-import Plyr from "plyr"; 
+import Editor from "@monaco-editor/react"; 
+// ✅ SWITCHED TO 'plyr-react' FOR PRIVATE VIDEO SUPPORT
+import Plyr from "plyr-react"; 
 import "plyr/dist/plyr.css"; 
 
 import { 
   PlayCircle, FileText, ChevronLeft, Menu, Code, HelpCircle, 
-  UploadCloud, Play, Save, Monitor, Cpu, ChevronDown, ChevronRight, CreditCard 
+  UploadCloud, Play, Save, Monitor, Cpu, ChevronDown, ChevronRight, CreditCard,
+  ExternalLink, File as FileIcon, X, CheckCircle, AlertCircle
 } from "lucide-react";
 
 // --- 🎥 COMPONENT: FACE PROCTORING CAM ---
@@ -44,13 +45,11 @@ const FaceProctoring = () => {
 
 // --- 💻 COMPONENT: PROFESSIONAL CODE ARENA ---
 const CodeCompiler = ({ lesson }: { lesson: any }) => {
-  // State
   const [code, setCode] = useState(lesson.initial_code || "# Write your solution here...\nprint('Hello iQmath')");
   const [output, setOutput] = useState("Ready to execute...");
   const [loading, setLoading] = useState(false);
-  const [language, setLanguage] = useState(71); // Default Python (71)
+  const [language, setLanguage] = useState(71); 
 
-  // Language Options (Judge0 IDs)
   const languages = [
     { id: 71, name: "Python (3.8.1)", value: "python" },
     { id: 62, name: "Java (OpenJDK 13)", value: "java" },
@@ -58,32 +57,21 @@ const CodeCompiler = ({ lesson }: { lesson: any }) => {
     { id: 63, name: "JavaScript (Node.js)", value: "javascript" },
   ];
 
-  // Parse Test Cases (safely)
   const testCases = lesson.test_cases ? JSON.parse(lesson.test_cases) : [];
 
   const runCode = async () => {
     setLoading(true);
     setOutput("Compiling & Executing...");
-    
     try {
-        // Call Backend Proxy to Judge0
         const res = await axios.post("http://127.0.0.1:8000/api/v1/execute", {
             source_code: code,
             language_id: language, 
-            stdin: testCases[0]?.input || "" // Use first test case input for now
+            stdin: testCases[0]?.input || "" 
         });
-
-        // Format Output
-        if (res.data.stdout) {
-            setOutput(res.data.stdout);
-        } else if (res.data.stderr) {
-            setOutput(`Error:\n${res.data.stderr}`);
-        } else if (res.data.compile_output) {
-            setOutput(`Compile Error:\n${res.data.compile_output}`);
-        } else {
-            setOutput("Execution finished with no output.");
-        }
-
+        if (res.data.stdout) setOutput(res.data.stdout);
+        else if (res.data.stderr) setOutput(`Error:\n${res.data.stderr}`);
+        else if (res.data.compile_output) setOutput(`Compile Error:\n${res.data.compile_output}`);
+        else setOutput("Execution finished with no output.");
     } catch (err) {
         console.error(err);
         setOutput("❌ Execution Failed. Check backend connection.");
@@ -98,11 +86,7 @@ const CodeCompiler = ({ lesson }: { lesson: any }) => {
 
   return (
     <div className="flex h-full p-4 gap-4 bg-slate-100 font-sans">
-        
-        {/* --- LEFT COLUMN (40%) --- */}
         <div className="w-[40%] flex flex-col gap-4">
-            
-            {/* 1. TOP LEFT: Problem Description */}
             <div className="flex-1 bg-white rounded-xl shadow-sm border border-slate-200 p-6 overflow-y-auto">
                 <div className="flex justify-between items-start mb-4">
                     <h2 className="text-xl font-extrabold text-slate-800 m-0">{lesson.title}</h2>
@@ -111,7 +95,6 @@ const CodeCompiler = ({ lesson }: { lesson: any }) => {
                 <div className="prose prose-sm text-slate-600 mb-6">
                     {lesson.description || "No description provided."}
                 </div>
-
                 <h3 className="text-xs font-extrabold text-slate-900 uppercase tracking-widest mb-3">Test Cases</h3>
                 <div className="space-y-3">
                     {testCases.map((tc: any, i: number) => (
@@ -126,72 +109,28 @@ const CodeCompiler = ({ lesson }: { lesson: any }) => {
                     ))}
                 </div>
             </div>
-
-            {/* 2. BOTTOM LEFT: Face Cam */}
-            <div className="h-[200px] shrink-0">
-                <FaceProctoring />
-            </div>
+            <div className="h-[200px] shrink-0"><FaceProctoring /></div>
         </div>
-
-        {/* --- RIGHT COLUMN (60%) --- */}
         <div className="w-[60%] flex flex-col gap-4">
-            
-            {/* 3. TOP RIGHT: Code Editor (2.5/4 Height) */}
             <div className="flex-[2.5] flex flex-col bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
                 <div className="bg-slate-50 border-b border-slate-200 p-2 flex justify-between items-center px-4 h-12">
-                    <div className="flex items-center gap-2 text-slate-600 font-bold text-sm">
-                        <Code size={16} /> Code Editor
-                    </div>
-                    <select 
-                        className="bg-white border border-slate-300 text-slate-700 text-xs font-bold rounded px-2 py-1 outline-none focus:ring-2 focus:ring-blue-500"
-                        value={language}
-                        onChange={(e) => setLanguage(parseInt(e.target.value))}
-                    >
+                    <div className="flex items-center gap-2 text-slate-600 font-bold text-sm"><Code size={16} /> Code Editor</div>
+                    <select className="bg-white border border-slate-300 text-slate-700 text-xs font-bold rounded px-2 py-1 outline-none focus:ring-2 focus:ring-blue-500" value={language} onChange={(e) => setLanguage(parseInt(e.target.value))}>
                         {languages.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
                     </select>
                 </div>
                 <div className="flex-1">
-                    <Editor
-                        height="100%"
-                        defaultLanguage="python"
-                        language={languages.find(l => l.id === language)?.value}
-                        theme="light"
-                        value={code}
-                        onChange={(val) => setCode(val || "")}
-                        options={{ minimap: { enabled: false }, fontSize: 14, scrollBeyondLastLine: false }}
-                    />
+                    <Editor height="100%" defaultLanguage="python" language={languages.find(l => l.id === language)?.value} theme="light" value={code} onChange={(val) => setCode(val || "")} options={{ minimap: { enabled: false }, fontSize: 14, scrollBeyondLastLine: false }} />
                 </div>
             </div>
-
-            {/* 4. BOTTOM RIGHT: Output & Controls (1.5/4 Height) */}
             <div className="flex-[1.5] flex flex-col gap-4">
-                
-                {/* Output Screen (1.3 Part) */}
                 <div className="flex-[1.3] flex flex-col bg-slate-900 rounded-xl overflow-hidden shadow-sm">
-                    <div className="bg-slate-800 text-slate-400 px-4 py-2 text-xs font-bold uppercase tracking-wider flex items-center gap-2">
-                        <Monitor size={14} /> Terminal Output
-                    </div>
-                    <div className="flex-1 p-4 font-mono text-sm text-green-400 overflow-y-auto whitespace-pre-wrap">
-                        {output}
-                    </div>
+                    <div className="bg-slate-800 text-slate-400 px-4 py-2 text-xs font-bold uppercase tracking-wider flex items-center gap-2"><Monitor size={14} /> Terminal Output</div>
+                    <div className="flex-1 p-4 font-mono text-sm text-green-400 overflow-y-auto whitespace-pre-wrap">{output}</div>
                 </div>
-
-                {/* Control Buttons (0.2 Part) */}
                 <div className="flex-[0.2] flex gap-3">
-                    <button 
-                        onClick={saveProgress}
-                        className="flex-1 bg-white border-2 border-slate-200 text-slate-700 hover:border-slate-300 hover:bg-slate-50 font-bold rounded-xl flex items-center justify-center gap-2 transition-all"
-                    >
-                        <Save size={18} /> Save & Next
-                    </button>
-                    <button 
-                        onClick={runCode}
-                        disabled={loading}
-                        className="flex-1 bg-[#005EB8] hover:bg-[#004a94] text-white font-bold rounded-xl flex items-center justify-center gap-2 transition-all disabled:opacity-70"
-                    >
-                        {loading ? <Cpu size={18} className="animate-spin" /> : <Play size={18} />} 
-                        {loading ? "Running..." : "Run Code"}
-                    </button>
+                    <button onClick={saveProgress} className="flex-1 bg-white border-2 border-slate-200 text-slate-700 hover:border-slate-300 hover:bg-slate-50 font-bold rounded-xl flex items-center justify-center gap-2 transition-all"><Save size={18} /> Save & Next</button>
+                    <button onClick={runCode} disabled={loading} className="flex-1 bg-[#005EB8] hover:bg-[#004a94] text-white font-bold rounded-xl flex items-center justify-center gap-2 transition-all disabled:opacity-70">{loading ? <Cpu size={18} className="animate-spin" /> : <Play size={18} />} {loading ? "Running..." : "Run Code"}</button>
                 </div>
             </div>
         </div>
@@ -199,7 +138,7 @@ const CodeCompiler = ({ lesson }: { lesson: any }) => {
   );
 };
 
-// --- MAIN PLAYER COMPONENT (Wraps CodeCompiler) ---
+// --- MAIN PLAYER COMPONENT ---
 const CoursePlayer = () => {
   const { courseId } = useParams();
   const navigate = useNavigate();
@@ -207,8 +146,10 @@ const CoursePlayer = () => {
   const [activeLesson, setActiveLesson] = useState<any>(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [expandedModules, setExpandedModules] = useState<number[]>([]);
-  const videoNode = useRef<HTMLVideoElement>(null);
-  const playerRef = useRef<any>(null); 
+  
+  // File Upload State
+  const [assignmentFile, setAssignmentFile] = useState<File | null>(null);
+  const [uploading, setUploading] = useState(false);
 
   const brand = { blue: "#005EB8", green: "#87C232", textMain: "#0f172a", textLight: "#64748b" };
 
@@ -247,32 +188,134 @@ const CoursePlayer = () => {
     fetchCourse();
   }, [courseId]);
 
-  // Player Logic (Video)
-  useEffect(() => {
-    if (activeLesson && (activeLesson.type === 'video' || activeLesson.type === 'live_class') && videoNode.current) {
-        if (playerRef.current) playerRef.current.destroy();
-        const getYoutubeId = (url: string) => {
-            if (!url) return null;
-            const match = url.match(/^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|&v=)([^#&?]*).*/);
-            return (match && match[2].length === 11) ? match[2] : null;
-        };
-        const videoId = getYoutubeId(activeLesson.url);
-        if (videoId) {
-            // @ts-ignore
-            playerRef.current = new Plyr(videoNode.current, { controls: ['play-large', 'play', 'progress', 'current-time', 'mute', 'volume', 'fullscreen'] });
-            if (playerRef.current) playerRef.current.source = { type: 'video', sources: [{ src: videoId, provider: 'youtube' }] };
-        }
-    }
-  }, [activeLesson]);
-
   const toggleModule = (moduleId: number) => setExpandedModules(prev => prev.includes(moduleId) ? prev.filter(id => id !== moduleId) : [...prev, moduleId]);
   const getEmbedUrl = (url: string) => url?.replace("/view", "/preview") || "";
 
+  // ✅ HELPER: Extract YouTube ID
+  const getYoutubeId = (url: string) => {
+    const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|&v=)([^#&?]*).*/;
+    const match = url.match(regExp);
+    return (match && match[2].length === 11) ? match[2] : null;
+  };
+
+  // ✅ MEMOIZED PLYR OPTIONS (Private Player Logic)
+  const plyrOptions = useMemo(() => ({
+    controls: ['play-large', 'play', 'progress', 'current-time', 'mute', 'volume', 'fullscreen'],
+    youtube: { noCookie: true, rel: 0, showinfo: 0, iv_load_policy: 3, modestbranding: 1 },
+  }), []);
+
+  // Handle Assignment Upload Logic
+  const handleAssignmentUpload = async () => {
+    if (!assignmentFile) return;
+    setUploading(true);
+    
+    try {
+        const formData = new FormData();
+        formData.append("file", assignmentFile);
+        formData.append("course_title", course?.title || "Unknown Course");
+        formData.append("lesson_title", activeLesson.title);
+
+        const token = localStorage.getItem("token");
+        
+        await axios.post("http://127.0.0.1:8000/api/v1/submit-assignment", formData, {
+            headers: { "Authorization": `Bearer ${token}`, "Content-Type": "multipart/form-data" }
+        });
+
+        alert(`✅ Assignment "${assignmentFile.name}" Submitted Successfully!`);
+        setAssignmentFile(null); 
+
+    } catch (err) {
+        console.error(err);
+        alert("❌ Upload Failed. Please try again.");
+    } finally {
+        setUploading(false);
+    }
+  };
+
   const renderContent = () => {
     if (!activeLesson) return <div className="text-white p-10 text-center">Select a lesson</div>;
+    
+    // 📝 1. NOTES
     if (activeLesson.type === "note") return <iframe src={getEmbedUrl(activeLesson.url)} width="100%" height="100%" className="bg-white border-0" allow="autoplay" />;
-    if (activeLesson.type === "video") return <div className="w-full h-full bg-black flex items-center justify-center"><div className="w-full max-w-[1000px]"><video ref={videoNode} className="plyr-react plyr" playsInline controls /></div></div>;
+    
+    // 🎥 2. VIDEO (✅ UPDATED: WORKING PRIVATE PLAYER FROM BACKUP)
+    if (activeLesson.type === "video" || activeLesson.type === "live_class") {
+        const videoId = getYoutubeId(activeLesson.url);
+        
+        if (!videoId) return <div style={{color: "white", padding: "40px"}}>Invalid Video URL</div>;
+
+        const plyrSource = {
+            type: "video" as const, 
+            sources: [{ src: videoId, provider: "youtube" as const }],
+        };
+
+        return (
+            <div style={{ width: "100%", height: "100%", background: "black", display: "flex", alignItems: "center", justifyContent: "center" }}>
+               <div style={{ width: "100%", maxWidth: "1000px", borderRadius: "12px", overflow: "hidden", boxShadow: "0 20px 50px rgba(0,0,0,0.5)" }}>
+                  <style>{`
+                     .plyr__video-embed iframe { top: -50%; height: 200%; }
+                     :root { --plyr-color-main: #005EB8; }
+                  `}</style>
+                  
+                  <Plyr 
+                    key={activeLesson.id} 
+                    source={plyrSource} 
+                    options={plyrOptions} 
+                  />
+               </div>
+            </div>
+        );
+    }
+    
+    // 💻 3. CODE ARENA
     if (activeLesson.type === "code_test") return <CodeCompiler lesson={activeLesson} />;
+    
+    // 📂 4. ASSIGNMENT (Direct Upload)
+    if (activeLesson.type === "assignment") {
+      return (
+        <div className="flex flex-col items-center justify-center h-full bg-[#F8FAFC] p-8 font-sans text-slate-800">
+            <div className="bg-white p-10 rounded-2xl shadow-xl max-w-2xl w-full text-center border border-slate-100">
+                <div className="w-20 h-20 bg-blue-50 rounded-full flex items-center justify-center mx-auto mb-6">
+                    <UploadCloud size={40} className="text-[#005EB8]" />
+                </div>
+                <h2 className="text-2xl font-bold text-slate-800 mb-2">{activeLesson.title}</h2>
+                {activeLesson.is_mandatory && (<span className="inline-block bg-red-100 text-red-600 text-xs font-bold px-3 py-1 rounded-full mb-4">MANDATORY SUBMISSION</span>)}
+                <p className="text-slate-600 mb-8 leading-relaxed whitespace-pre-wrap text-sm">
+                    {activeLesson.instructions || activeLesson.description || "Upload your assignment below. Supported formats: PDF, DOCX, ZIP."}
+                </p>
+                <div className="mb-8">
+                    {!assignmentFile ? (
+                        <div className="border-2 border-dashed border-slate-300 rounded-xl p-8 bg-slate-50 hover:bg-slate-100 transition-all cursor-pointer relative group">
+                            <input type="file" className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" onChange={(e) => setAssignmentFile(e.target.files?.[0] || null)} accept=".pdf,.doc,.docx,.zip" />
+                            <div className="flex flex-col items-center gap-3 group-hover:scale-105 transition-transform">
+                                <UploadCloud size={32} className="text-slate-400 group-hover:text-[#005EB8]" />
+                                <div>
+                                    <p className="text-slate-700 font-bold text-sm">Click to upload or drag and drop</p>
+                                    <p className="text-slate-400 text-xs mt-1">Maximum file size 10MB</p>
+                                </div>
+                            </div>
+                        </div>
+                    ) : (
+                        <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 flex items-center justify-between">
+                            <div className="flex items-center gap-4">
+                                <div className="bg-white p-2 rounded-lg border border-blue-100 text-[#005EB8]"><FileIcon size={24} /></div>
+                                <div className="text-left">
+                                    <p className="text-slate-800 font-bold text-sm truncate max-w-[200px]">{assignmentFile.name}</p>
+                                    <p className="text-slate-500 text-xs">{(assignmentFile.size / 1024 / 1024).toFixed(2)} MB</p>
+                                </div>
+                            </div>
+                            <button onClick={() => setAssignmentFile(null)} className="p-2 hover:bg-white rounded-full transition-colors text-slate-400 hover:text-red-500"><X size={20} /></button>
+                        </div>
+                    )}
+                </div>
+                <button onClick={handleAssignmentUpload} disabled={!assignmentFile || uploading} className="w-full py-4 bg-[#005EB8] hover:bg-[#004a94] text-white rounded-xl font-bold text-lg flex items-center justify-center gap-3 transition-all shadow-lg shadow-blue-200 active:scale-95 disabled:opacity-70 disabled:cursor-not-allowed">
+                    {uploading ? "Uploading to Drive..." : "Submit Assignment"}
+                    {!uploading && <CheckCircle size={20} />}
+                </button>
+            </div>
+        </div>
+      );
+    }
     
     return <div className="text-white p-10 text-center">Select content from the sidebar</div>;
   };
@@ -313,6 +356,7 @@ const CoursePlayer = () => {
                               {lesson.type.includes("video") && <PlayCircle size={16} />}
                               {lesson.type === "note" && <FileText size={16} />}
                               {lesson.type.includes("code") && <Code size={16} />}
+                              {lesson.type === "assignment" && <UploadCloud size={16} />}
                             </div>
                             <div className={`text-sm flex-1 ${isActive ? "text-blue-600 font-semibold" : "text-slate-600"}`}>{lesson.title}</div>
                           </div>
