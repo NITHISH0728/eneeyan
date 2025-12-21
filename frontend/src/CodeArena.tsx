@@ -1,180 +1,280 @@
 import { useState, useEffect } from "react";
 import axios from "axios";
-import { Plus, Download, Code, Trash2 } from "lucide-react";
+import { 
+  Plus, Code, ChevronRight, X, Sparkles, Check, Trash2, Edit 
+} from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
 
 const CodeArena = () => {
-  const [codeTests, setCodeTests] = useState<any[]>([]);
-  const [showTestModal, setShowTestModal] = useState(false);
-  const [testResults, setTestResults] = useState<any[]>([]);
-  const [selectedTestId, setSelectedTestId] = useState<number | null>(null);
+  const [showModal, setShowModal] = useState(false);
+  const [tests, setTests] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+  
+  // --- CHALLENGE SETTINGS (Global) ---
+  const [challengeTitle, setChallengeTitle] = useState("");
+  const [passKey, setPassKey] = useState("");
+  const [timeLimit, setTimeLimit] = useState(60);
 
-  // Form State
-  const [testForm, setTestForm] = useState({ 
-    title: "", pass_key: "", time_limit: 60, problems: [] as any[] 
-  });
-  const [currentProblem, setCurrentProblem] = useState({ 
-    title: "", description: "", difficulty: "Easy", test_cases: JSON.stringify([{input: "", output: ""}]) 
-  });
+  // --- CURRENT PROBLEM STATE ---
+  const [probTitle, setProbTitle] = useState("");
+  const [probDesc, setProbDesc] = useState("");
+  const [difficulty, setDifficulty] = useState("Easy");
+  const [testCases, setTestCases] = useState([{ input: "", output: "", hidden: false }]);
+  const [aiLoading, setAiLoading] = useState(false);
 
-  const theme = { blue: "#0066cc", green: "#8cc63f", darkBlue: "#004080", border: "#e0e0e0" };
+  // --- PROBLEM LIST (Shopping Cart) ---
+  const [addedProblems, setAddedProblems] = useState<any[]>([]);
 
-  useEffect(() => { fetchTests(); }, []);
+  useEffect(() => {
+    fetchTests();
+  }, []);
 
   const fetchTests = async () => {
+    const token = localStorage.getItem("token");
+    try {
+      const res = await axios.get("http://127.0.0.1:8000/api/v1/code-tests", { headers: { Authorization: `Bearer ${token}` } });
+      setTests(res.data);
+    } catch (err) { console.error(err); }
+  };
+
+  // ✨ AI GENERATION FUNCTION
+  const handleAIGenerate = async () => {
+    if (!probTitle) return alert("Please enter a problem title first!");
+    setAiLoading(true);
     try {
         const token = localStorage.getItem("token");
-        const res = await axios.get("http://127.0.0.1:8000/api/v1/code-tests", {
-            headers: { Authorization: `Bearer ${token}` }
-        });
-        setCodeTests(res.data);
-    } catch(err) { console.error("Failed to load tests"); }
+        const res = await axios.post("http://127.0.0.1:8000/api/v1/ai/generate", { title: probTitle }, { headers: { Authorization: `Bearer ${token}` } });
+        
+        setProbDesc(res.data.description);
+        setTestCases(JSON.parse(res.data.test_cases));
+    } catch (err) {
+        console.error(err);
+        alert("AI Generation failed.");
+    } finally {
+        setAiLoading(false);
+    }
   };
 
-  const handleCreateTest = async () => {
-      try {
-          const token = localStorage.getItem("token");
-          await axios.post("http://127.0.0.1:8000/api/v1/code-tests", testForm, {
-              headers: { Authorization: `Bearer ${token}` }
-          });
-          alert("✅ Test Created Successfully!");
-          setShowTestModal(false);
-          setTestForm({ title: "", pass_key: "", time_limit: 60, problems: [] });
-          fetchTests();
-      } catch(err) { alert("Failed to create test"); }
+  // --- PROBLEM MANAGEMENT ---
+  const handleAddTestCase = () => setTestCases([...testCases, { input: "", output: "", hidden: false }]);
+  
+  const handleTestCaseChange = (index: number, field: string, value: any) => {
+    const newCases = [...testCases];
+    // @ts-ignore
+    newCases[index][field] = value;
+    setTestCases(newCases);
   };
 
-  const addProblemToTest = () => {
-      if(!currentProblem.title) return alert("Problem title required");
-      setTestForm({...testForm, problems: [...testForm.problems, currentProblem]});
-      setCurrentProblem({ 
-        title: "", description: "", difficulty: "Easy", 
-        test_cases: JSON.stringify([{input: "", output: ""}]) 
-      });
-      alert("Problem Added!");
+  const handleRemoveTestCase = (index: number) => setTestCases(testCases.filter((_, i) => i !== index));
+
+  const addProblemToChallenge = () => {
+    if(!probTitle || !probDesc) return alert("Please fill problem details");
+    
+    const newProblem = {
+        title: probTitle,
+        description: probDesc,
+        difficulty,
+        test_cases: JSON.stringify(testCases) // Store as String for Backend
+    };
+
+    setAddedProblems([...addedProblems, newProblem]);
+    
+    // Reset Problem Form
+    setProbTitle(""); setProbDesc(""); setTestCases([{ input: "", output: "", hidden: false }]);
   };
 
-  const fetchResults = async (testId: number) => {
-      setSelectedTestId(testId);
-      try {
-          const token = localStorage.getItem("token");
-          const res = await axios.get(`http://127.0.0.1:8000/api/v1/code-tests/${testId}/results`, {
-              headers: { Authorization: `Bearer ${token}` }
-          });
-          setTestResults(res.data);
-      } catch(err) { alert("Failed to fetch results"); }
+  const removeProblem = (idx: number) => {
+    setAddedProblems(addedProblems.filter((_, i) => i !== idx));
   };
 
-  const downloadResults = () => {
-      if(testResults.length === 0) return alert("No results to export");
-      const csvContent = "data:text/csv;charset=utf-8,Name,Email,Score,Problems Solved,Time Taken,Date\n" 
-          + testResults.map(r => `${r.student_name},${r.email},${r.score},${r.problems_solved},${r.time_taken},${r.submitted_at}`).join("\n");
-      const link = document.createElement("a");
-      link.href = encodeURI(csvContent);
-      link.download = `test_results_${selectedTestId}.csv`;
-      document.body.appendChild(link);
-      link.click();
+  // --- FINAL SAVE ---
+  const handleSaveChallenge = async () => {
+    if(addedProblems.length === 0) return alert("Please add at least one problem!");
+    setLoading(true);
+    try {
+        const token = localStorage.getItem("token");
+        const payload = {
+            title: challengeTitle,
+            pass_key: passKey,
+            time_limit: timeLimit,
+            problems: addedProblems // Send the list of problems
+        };
+        await axios.post("http://127.0.0.1:8000/api/v1/code-tests", payload, { headers: { Authorization: `Bearer ${token}` } });
+        setShowModal(false);
+        fetchTests();
+        alert("Challenge Created Successfully!");
+        // Reset All
+        setChallengeTitle(""); setPassKey(""); setAddedProblems([]);
+    } catch (err) {
+        console.error(err);
+        alert("Failed to create challenge");
+    } finally {
+        setLoading(false);
+    }
   };
 
   return (
-    <div>
-        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "30px", alignItems: "center" }}>
-            <div>
-                <h2 style={{ margin: "0 0 5px 0", color: "#1e293b" }}>Code Arena</h2>
-                <p style={{ margin: 0, color: "#64748b" }}>Manage coding assessments and view results.</p>
-            </div>
-            <button onClick={() => setShowTestModal(true)} style={{ background: theme.green, color: "white", padding: "12px 24px", border: "none", borderRadius: "8px", cursor: "pointer", fontWeight: "bold", display: "flex", alignItems: "center", gap: "8px" }}>
-                <Plus size={18} /> Create Challenge
-            </button>
+    <div className="flex flex-col gap-6 font-sans">
+        <div className="flex justify-between items-center">
+            <div><h1 className="text-3xl font-extrabold text-slate-800">Code Arena</h1><p className="text-slate-500">Create and manage coding challenges.</p></div>
+            <button onClick={() => setShowModal(true)} className="bg-[#005EB8] hover:bg-[#004a94] text-white px-6 py-3 rounded-xl font-bold flex items-center gap-2 transition-all shadow-lg shadow-blue-200"><Plus size={20} /> Create Challenge</button>
         </div>
 
-        {/* ACTIVE TESTS GRID */}
-        <div style={{ display: "grid", gap: "20px" }}>
-            {codeTests.length === 0 && <div style={{padding: "40px", textAlign: "center", color: "#999", background: "white", borderRadius: "10px"}}>No active tests found. Create one!</div>}
-            
-            {codeTests.map(test => (
-                <div key={test.id} style={{ background: "white", padding: "25px", borderRadius: "12px", border: "1px solid #e2e8f0", display: "flex", justifyContent: "space-between", alignItems: "center", boxShadow: "0 2px 5px rgba(0,0,0,0.05)" }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: "20px" }}>
-                        <div style={{ padding: "12px", background: "#f0f9ff", borderRadius: "10px", color: theme.blue }}>
-                            <Code size={24} />
-                        </div>
-                        <div>
-                            <h3 style={{ margin: "0 0 5px 0", fontSize: "18px", color: "#1e293b" }}>{test.title}</h3>
-                            <div style={{ display: "flex", gap: "20px", fontSize: "13px", color: "#64748b" }}>
-                                <span>🔑 Pass Key: <b>{test.pass_key}</b></span>
-                                <span>⏱️ Limit: <b>{test.time_limit} mins</b></span>
+        {/* Challenge List */}
+        <div className="grid grid-cols-1 gap-4">
+            {tests.length === 0 ? (
+                <div className="bg-slate-50 p-12 rounded-2xl text-center border-2 border-dashed border-slate-200 text-slate-400">
+                    <Code size={48} className="mx-auto mb-4 opacity-20" />
+                    <p>No challenges created yet.</p>
+                </div>
+            ) : (
+                tests.map((test) => (
+                    <div key={test.id} className="bg-white p-6 rounded-2xl border border-slate-200 flex justify-between items-center hover:shadow-lg hover:-translate-y-1 transition-all duration-300">
+                        <div className="flex items-center gap-5">
+                            <div className="w-14 h-14 bg-blue-50 rounded-2xl flex items-center justify-center text-[#005EB8]"><Code size={28} /></div>
+                            <div>
+                                <h3 className="font-bold text-slate-800 text-lg">{test.title}</h3>
+                                <div className="flex gap-4 text-sm text-slate-500 mt-1 font-medium">
+                                    <span className="flex items-center gap-1"><span className="w-2 h-2 bg-green-400 rounded-full"></span> {test.time_limit} mins</span>
+                                    <span className="bg-slate-100 px-2 py-0.5 rounded text-xs font-mono text-slate-600 border border-slate-200">Key: {test.pass_key}</span>
+                                </div>
                             </div>
                         </div>
+                        <button className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-slate-50 text-slate-400 hover:text-[#005EB8]"><ChevronRight /></button>
                     </div>
-                    <button onClick={() => fetchResults(test.id)} style={{ background: theme.blue, color: "white", padding: "10px 24px", border: "none", borderRadius: "8px", cursor: "pointer", fontWeight: "600" }}>
-                        View Results
-                    </button>
-                </div>
-            ))}
+                ))
+            )}
         </div>
 
-        {/* RESULTS TABLE SECTION */}
-        {selectedTestId && (
-            <div style={{ marginTop: "40px", background: "white", padding: "30px", borderRadius: "12px", border: "1px solid #e0e0e0", animation: "fadeIn 0.3s ease" }}>
-                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "20px", alignItems: "center" }}>
-                    <h3 style={{ margin: 0 }}>Results Log (Test ID: {selectedTestId})</h3>
-                    <button onClick={downloadResults} style={{ background: "#1e293b", color: "white", padding: "10px 20px", border: "none", borderRadius: "8px", cursor: "pointer", display: "flex", alignItems: "center", gap: "8px" }}>
-                        <Download size={16} /> Export CSV
-                    </button>
-                </div>
-                
-                <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                    <thead>
-                        <tr style={{ background: "#f8fafc", textAlign: "left", color: "#475569" }}>
-                            <th style={{padding: "15px", borderBottom: "1px solid #eee"}}>Student Name</th>
-                            <th style={{padding: "15px", borderBottom: "1px solid #eee"}}>Email</th>
-                            <th style={{padding: "15px", borderBottom: "1px solid #eee"}}>Score</th>
-                            <th style={{padding: "15px", borderBottom: "1px solid #eee"}}>Solved</th>
-                            <th style={{padding: "15px", borderBottom: "1px solid #eee"}}>Time</th>
-                            <th style={{padding: "15px", borderBottom: "1px solid #eee"}}>Submitted</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {testResults.map((r, i) => (
-                            <tr key={i} style={{ borderBottom: "1px solid #eee" }}>
-                                <td style={{padding: "15px", fontWeight: "600"}}>{r.student_name}</td>
-                                <td style={{padding: "15px", color: "#666"}}>{r.email}</td>
-                                <td style={{padding: "15px", color: theme.green, fontWeight: "bold"}}>{r.score}</td>
-                                <td style={{padding: "15px"}}>{r.problems_solved}</td>
-                                <td style={{padding: "15px"}}>{r.time_taken}</td>
-                                <td style={{padding: "15px", fontSize: "12px", color: "#888"}}>{r.submitted_at}</td>
-                            </tr>
-                        ))}
-                    </tbody>
-                </table>
-            </div>
-        )}
-
         {/* CREATE MODAL */}
-        {showTestModal && (
-            <div style={{ position: "fixed", top: 0, left: 0, width: "100%", height: "100%", background: "rgba(0,0,0,0.6)", display: "flex", justifyContent: "center", alignItems: "center", zIndex: 2000 }}>
-                <div style={{ background: "white", width: "800px", maxHeight: "90vh", borderRadius: "16px", padding: "30px", overflowY: "auto", boxShadow: "0 25px 50px -12px rgba(0,0,0,0.25)" }}>
-                    <h2 style={{color: theme.darkBlue, borderBottom: "1px solid #eee", paddingBottom: "15px", marginTop: 0}}>Define New Challenge</h2>
-                    
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "15px", marginBottom: "20px" }}>
-                        <div><label style={{fontSize:"12px", fontWeight:"bold"}}>Title</label><input value={testForm.title} onChange={e => setTestForm({...testForm, title: e.target.value})} style={{width: "100%", padding: "10px", border: "1px solid #ccc", borderRadius: "6px", marginTop: "5px"}} /></div>
-                        <div><label style={{fontSize:"12px", fontWeight:"bold"}}>Pass Key</label><input value={testForm.pass_key} onChange={e => setTestForm({...testForm, pass_key: e.target.value})} style={{width: "100%", padding: "10px", border: "1px solid #ccc", borderRadius: "6px", marginTop: "5px"}} /></div>
-                        <div><label style={{fontSize:"12px", fontWeight:"bold"}}>Time (Mins)</label><input type="number" value={testForm.time_limit} onChange={e => setTestForm({...testForm, time_limit: Number(e.target.value)})} style={{width: "100%", padding: "10px", border: "1px solid #ccc", borderRadius: "6px", marginTop: "5px"}} /></div>
-                    </div>
-                    
-                    <div style={{ background: "#f8fafc", padding: "20px", borderRadius: "12px", border: "1px solid #e2e8f0", marginBottom: "20px" }}>
-                        <h4 style={{margin: "0 0 15px 0", color: "#333"}}>Add Problem ({testForm.problems.length} added)</h4>
-                        <input placeholder="Problem Title (e.g. Fibonacci Series)" value={currentProblem.title} onChange={e => setCurrentProblem({...currentProblem, title: e.target.value})} style={{ width: "100%", padding: "10px", marginBottom: "10px", borderRadius: "6px", border: "1px solid #ccc" }} />
-                        <textarea placeholder="Problem Description..." value={currentProblem.description} onChange={e => setCurrentProblem({...currentProblem, description: e.target.value})} style={{ width: "100%", padding: "10px", marginBottom: "10px", borderRadius: "6px", border: "1px solid #ccc", minHeight: "80px" }} />
-                        <button onClick={addProblemToTest} style={{ background: "#334155", color: "white", padding: "10px 20px", border: "none", borderRadius: "6px", cursor: "pointer", fontWeight: "600" }}>+ Add Problem</button>
-                    </div>
+        <AnimatePresence>
+            {showModal && (
+                <div className="fixed inset-0 bg-slate-900/40 z-50 flex items-center justify-center backdrop-blur-sm p-4">
+                    <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }} className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl max-h-[95vh] overflow-y-auto flex flex-col">
+                        
+                        {/* Header */}
+                        <div className="p-6 border-b border-slate-100 flex justify-between items-center sticky top-0 bg-white/90 backdrop-blur-md z-10">
+                            <div>
+                                <h2 className="text-xl font-bold text-slate-800">Define New Challenge</h2>
+                                <p className="text-xs text-slate-500 mt-1">Configure test details and add coding problems.</p>
+                            </div>
+                            <button onClick={() => setShowModal(false)} className="bg-slate-50 p-2 rounded-full hover:bg-red-50 hover:text-red-500 transition-colors"><X size={20} /></button>
+                        </div>
+                        
+                        <div className="p-8 space-y-8">
+                            {/* 1. Challenge Settings */}
+                            <div className="bg-slate-50 p-5 rounded-xl border border-slate-200">
+                                <h3 className="text-sm font-extrabold text-slate-400 uppercase tracking-widest mb-4">Challenge Settings</h3>
+                                <div className="grid grid-cols-3 gap-5">
+                                    <div className="col-span-1">
+                                        <label className="block text-xs font-bold text-slate-700 mb-1.5 uppercase">Title</label>
+                                        <input type="text" value={challengeTitle} onChange={(e) => setChallengeTitle(e.target.value)} className="w-full p-3 bg-white border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-blue-500 transition-all font-semibold text-slate-700" placeholder="e.g. Mid-Term Coding Exam" />
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-bold text-slate-700 mb-1.5 uppercase">Pass Key</label>
+                                        <input type="text" value={passKey} onChange={(e) => setPassKey(e.target.value)} className="w-full p-3 bg-white border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-blue-500 transition-all font-mono text-slate-600" placeholder="Secret123" />
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-bold text-slate-700 mb-1.5 uppercase">Time Limit (Mins)</label>
+                                        <input type="number" value={timeLimit} onChange={(e) => setTimeLimit(parseInt(e.target.value))} className="w-full p-3 bg-white border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-blue-500 transition-all font-semibold" />
+                                    </div>
+                                </div>
+                            </div>
 
-                    <div style={{display: "flex", gap: "10px"}}>
-                        <button onClick={handleCreateTest} style={{ flex: 1, padding: "15px", background: theme.green, color: "white", border: "none", borderRadius: "8px", fontWeight: "bold", fontSize: "16px", cursor: "pointer" }}>Save Challenge & Notify Students</button>
-                        <button onClick={() => setShowTestModal(false)} style={{ flex: 0.3, padding: "15px", background: "#e2e8f0", border: "none", color: "#333", cursor: "pointer", borderRadius: "8px", fontWeight: "bold" }}>Cancel</button>
-                    </div>
+                            <div className="flex gap-8">
+                                {/* 2. Add Problem Form (Left Side) */}
+                                <div className="flex-1 space-y-5">
+                                    <div className="flex justify-between items-center">
+                                        <h3 className="text-sm font-extrabold text-slate-400 uppercase tracking-widest">Add Problem ({addedProblems.length} added)</h3>
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-sm font-bold text-slate-700 mb-2">Problem Title</label>
+                                        <input type="text" value={probTitle} onChange={(e) => setProbTitle(e.target.value)} className="w-full p-3 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-blue-500" placeholder="e.g. Fibonacci Series" />
+                                    </div>
+
+                                    {/* AI Magic Section */}
+                                    <div className="flex items-start gap-3">
+                                        <div className="flex-1">
+                                            <label className="block text-sm font-bold text-slate-700 mb-2">Description</label>
+                                            <textarea value={probDesc} onChange={(e) => setProbDesc(e.target.value)} rows={4} className="w-full p-3 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-blue-500 text-sm leading-relaxed" placeholder="Detailed problem statement..." />
+                                        </div>
+                                        <button 
+                                            onClick={handleAIGenerate} 
+                                            disabled={aiLoading}
+                                            className="mt-7 w-[120px] h-[110px] bg-gradient-to-br from-violet-600 to-indigo-600 text-white rounded-xl font-bold flex flex-col items-center justify-center gap-2 hover:shadow-lg hover:shadow-indigo-200 transition-all active:scale-95"
+                                        >
+                                            {aiLoading ? <span className="animate-spin text-2xl">⚡</span> : <Sparkles size={28} />}
+                                            <span className="text-[10px] uppercase tracking-wider">{aiLoading ? "Thinking..." : "AI Auto-Fill"}</span>
+                                        </button>
+                                    </div>
+
+                                    {/* Test Cases */}
+                                    <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
+                                        <div className="flex justify-between items-center mb-3">
+                                            <label className="text-xs font-bold text-slate-500 uppercase">Test Cases</label>
+                                            <button onClick={handleAddTestCase} className="text-xs font-bold text-blue-600 hover:bg-blue-50 px-2 py-1 rounded transition-colors">+ Add Case</button>
+                                        </div>
+                                        <div className="space-y-2 max-h-[150px] overflow-y-auto pr-2 custom-scrollbar">
+                                            {testCases.map((tc, idx) => (
+                                                <div key={idx} className="flex gap-2 items-center">
+                                                    <span className="text-[10px] font-bold text-slate-400 w-4">#{idx+1}</span>
+                                                    <input type="text" placeholder="Input" value={tc.input} onChange={(e) => handleTestCaseChange(idx, 'input', e.target.value)} className="flex-1 p-2 text-xs border border-slate-200 rounded focus:border-blue-500 outline-none" />
+                                                    <input type="text" placeholder="Output" value={tc.output} onChange={(e) => handleTestCaseChange(idx, 'output', e.target.value)} className="flex-1 p-2 text-xs border border-slate-200 rounded focus:border-blue-500 outline-none" />
+                                                    <label className="flex items-center gap-1.5 cursor-pointer bg-white px-2 py-1.5 rounded border border-slate-200 hover:border-slate-300">
+                                                        <input type="checkbox" checked={tc.hidden} onChange={(e) => handleTestCaseChange(idx, 'hidden', e.target.checked)} className="accent-blue-600" />
+                                                        <span className="text-[10px] font-bold text-slate-500 uppercase">Hide</span>
+                                                    </label>
+                                                    {testCases.length > 1 && (
+                                                        <button onClick={() => handleRemoveTestCase(idx)} className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded transition-colors"><Trash2 size={14} /></button>
+                                                    )}
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    <button onClick={addProblemToChallenge} className="w-full py-3 bg-slate-800 text-white rounded-xl font-bold hover:bg-slate-900 transition-all flex items-center justify-center gap-2">
+                                        <Plus size={18} /> Add Problem to Challenge
+                                    </button>
+                                </div>
+
+                                {/* 3. Problem List Review (Right Side) */}
+                                <div className="w-[300px] border-l border-slate-100 pl-8">
+                                    <h3 className="text-sm font-extrabold text-slate-400 uppercase tracking-widest mb-4">Added Problems</h3>
+                                    <div className="space-y-3">
+                                        {addedProblems.length === 0 ? (
+                                            <div className="text-sm text-slate-400 italic text-center py-10 bg-slate-50 rounded-xl border border-dashed border-slate-200">
+                                                No problems added yet.
+                                            </div>
+                                        ) : (
+                                            addedProblems.map((p, i) => (
+                                                <div key={i} className="p-3 bg-white border border-slate-200 rounded-lg shadow-sm group">
+                                                    <div className="flex justify-between items-start">
+                                                        <h4 className="font-bold text-slate-800 text-sm line-clamp-1">{p.title}</h4>
+                                                        <button onClick={() => removeProblem(i)} className="text-slate-300 hover:text-red-500"><X size={14} /></button>
+                                                    </div>
+                                                    <p className="text-xs text-slate-500 mt-1 line-clamp-2">{p.description}</p>
+                                                    <div className="mt-2 flex gap-2">
+                                                        <span className="text-[10px] bg-slate-100 px-1.5 py-0.5 rounded text-slate-500 font-mono">{(JSON.parse(p.test_cases)).length} Cases</span>
+                                                    </div>
+                                                </div>
+                                            ))
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="p-6 border-t border-slate-100 flex justify-end gap-3 sticky bottom-0 bg-white rounded-b-2xl">
+                            <button onClick={() => setShowModal(false)} className="px-6 py-3 rounded-xl font-bold text-slate-600 hover:bg-slate-50 transition-colors">Cancel</button>
+                            <button onClick={handleSaveChallenge} disabled={loading} className="px-8 py-3 bg-[#87C232] text-white rounded-xl font-bold hover:bg-[#76a82b] flex items-center gap-2 shadow-lg shadow-green-100 transition-all active:scale-95 disabled:opacity-70">
+                                {loading ? "Saving..." : <><Check size={18} /> Save Complete Challenge</>}
+                            </button>
+                        </div>
+                    </motion.div>
                 </div>
-            </div>
-        )}
+            )}
+        </AnimatePresence>
     </div>
   );
 };

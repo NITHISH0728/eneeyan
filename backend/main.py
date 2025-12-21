@@ -2,8 +2,7 @@ from fastapi import FastAPI, Depends, HTTPException, status, UploadFile, File, F
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
-# from passlib.context import CryptContext  <-- REMOVED (Causing Crash)
-import bcrypt # ✅ ADDED: Direct Bcrypt (Stable)
+import bcrypt 
 from jose import JWTError, jwt
 from datetime import datetime, timedelta
 from typing import List, Optional
@@ -18,8 +17,9 @@ import random
 import string
 import pandas as pd    
 import requests 
-import razorpay  # ✅ Razorpay Library
-
+import razorpay
+import google.generativeai as genai # ✅ Added Google AI Library
+import re  # 👈 Add this with your other imports
 # --- 📄 PDF GENERATION IMPORTS ---
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import landscape, A4
@@ -46,15 +46,20 @@ SECRET_KEY = "supersecretkey_change_this_in_production"
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 
 
-# pwd_context = CryptContext(...) <-- REMOVED (Causing Crash)
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/v1/login") 
 
 # --- 💳 RAZORPAY CONFIGURATION ---
-# ✅ YOUR ACTUAL KEYS
 RAZORPAY_KEY_ID = "rzp_test_Ru8lDcv8KvAiC0" 
 RAZORPAY_KEY_SECRET = "puZLB2DQS8FmH0Z7SNrJtOBb"
 
 client = razorpay.Client(auth=(RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET))
+
+# --- ✨ GEMINI AI CONFIGURATION (REAL AI) ---
+# 👇 PASTE YOUR KEY HERE 👇
+GEMINI_API_KEY = "AIzaSyBgfLU5nf8l3KbhtsPmcg3f1s7k4irU3UU" 
+
+genai.configure(api_key=GEMINI_API_KEY)
+model = genai.GenerativeModel('gemini-2.5-flash')
 
 # --- 🗄️ DATABASE UTILITIES ---
 def get_db():
@@ -103,7 +108,7 @@ class ProblemSchema(BaseModel):
     title: str
     description: str
     difficulty: str
-    test_cases: str # JSON String
+    test_cases: str 
 
 class CodeTestCreate(BaseModel):
     title: str
@@ -121,22 +126,21 @@ class ContentUpdate(BaseModel):
     title: Optional[str] = None
     url: Optional[str] = None
 
-# ✅ Execution Request Model
 class CodeExecutionRequest(BaseModel):
     source_code: str
     stdin: str
 
-# --- 🔑 AUTH LOGIC (FIXED FOR PYTHON 3.13) ---
-# We replaced passlib with direct bcrypt calls to stop the 500 Error
+# ✅ AI Request Model
+class AIGenerateRequest(BaseModel):
+    title: str
 
+# --- 🔑 AUTH LOGIC ---
 def verify_password(plain_password, hashed_password):
-    # Ensure hashed_password is bytes
     if isinstance(hashed_password, str):
         hashed_password = hashed_password.encode('utf-8')
     return bcrypt.checkpw(plain_password.encode('utf-8'), hashed_password)
 
 def get_password_hash(password):
-    # Hash and return as string for database storage
     return bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
 
 def create_access_token(data: dict):
@@ -242,18 +246,78 @@ async def bulk_admit_students(file: UploadFile = File(...), course_id: int = For
     db.commit()
     return {"message": f"Enrolled {count} students"}
 
-# --- 🚀 CODE ARENA ENDPOINTS ---
+# --- 🚀 CODE ARENA ENDPOINTS (HYBRID AI ENHANCED) ---
 
+# ✅ 1. REAL GEMINI AI GENERATION ENDPOINT
+@app.post("/api/v1/ai/generate")
+async def generate_problem_content(req: AIGenerateRequest, db: Session = Depends(get_db)):
+    if not GEMINI_API_KEY or "PASTE_YOUR" in GEMINI_API_KEY:
+        print("❌ Error: API Key is missing or default.")
+        raise HTTPException(status_code=500, detail="Gemini API Key not configured")
+
+    try:
+        # 1. Enhanced Prompt to force valid JSON
+        prompt = f"""
+        Act as a strict coding instructor. 
+        Create a programming challenge based on the topic: "{req.title}".
+        
+        REQUIRED OUTPUT FORMAT (JSON ONLY):
+        {{
+            "description": "A clear, concise problem statement asking the student to solve the task.",
+            "test_cases": [
+                {{"input": "example_input", "output": "expected_output", "hidden": false}},
+                {{"input": "test_input_2", "output": "test_output_2", "hidden": false}},
+                {{"input": "edge_case", "output": "edge_output", "hidden": true}}
+            ]
+        }}
+        
+        Do NOT wrap in markdown code blocks. Return ONLY the raw JSON string.
+        """
+        
+        # 2. Call Gemini
+        print(f"🤖 Sending request to Gemini for: {req.title}")
+        response = model.generate_content(prompt)
+        
+        # 3. Robust Cleaning (The Fix)
+        # Use Regex to find the first '{' and the last '}' to ignore any extra text
+        text = response.text.strip()
+        match = re.search(r'\{.*\}', text, re.DOTALL)
+        
+        if not match:
+            raise ValueError("AI did not return valid JSON format.")
+            
+        clean_json = match.group()
+        ai_data = json.loads(clean_json)
+        
+        # 4. Success Return
+        print("✅ AI Generation Successful!")
+        return {
+            "description": ai_data.get("description", "No description generated."),
+            "test_cases": json.dumps(ai_data.get("test_cases", [])) 
+        }
+
+    except Exception as e:
+        print(f"🔥 AI GENERATION FAILED: {str(e)}")
+        # Check your terminal! This print will tell you exactly why it failed.
+        raise HTTPException(status_code=500, detail=f"AI Error: {str(e)}")
+    
 @app.post("/api/v1/code-tests")
 def create_code_test(test: CodeTestCreate, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
     if current_user.role != "instructor": raise HTTPException(status_code=403)
     new_test = models.CodeTest(title=test.title, pass_key=test.pass_key, time_limit=test.time_limit, instructor_id=current_user.id)
     db.add(new_test); db.commit(); db.refresh(new_test)
+    
     for prob in test.problems:
-        new_prob = models.Problem(test_id=new_test.id, title=prob.title, description=prob.description, difficulty=prob.difficulty, test_cases=prob.test_cases)
+        new_prob = models.Problem(
+            test_id=new_test.id, 
+            title=prob.title, 
+            description=prob.description, 
+            difficulty=prob.difficulty, 
+            test_cases=prob.test_cases 
+        )
         db.add(new_prob)
     db.commit()
-    return {"message": "Test Created Successfully & Students Notified!"}
+    return {"message": "Test Created Successfully!"}
 
 @app.get("/api/v1/code-tests")
 def get_code_tests(db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
@@ -265,7 +329,20 @@ def start_code_test(test_id: int, pass_key: str = Form(...), db: Session = Depen
     test = db.query(models.CodeTest).filter(models.CodeTest.id == test_id).first()
     if not test: raise HTTPException(status_code=404, detail="Test not found")
     if test.pass_key != pass_key: raise HTTPException(status_code=403, detail="Invalid Pass Key")
-    return {"id": test.id, "title": test.title, "time_limit": test.time_limit, "problems": [{"id": p.id, "title": p.title, "description": p.description, "test_cases": p.test_cases} for p in test.problems]}
+    
+    return {
+        "id": test.id, 
+        "title": test.title, 
+        "time_limit": test.time_limit, 
+        "problems": [
+            {
+                "id": p.id, 
+                "title": p.title, 
+                "description": p.description, 
+                "test_cases": p.test_cases 
+            } for p in test.problems
+        ]
+    }
 
 @app.post("/api/v1/code-tests/submit")
 def submit_test_result(sub: TestSubmission, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
@@ -282,8 +359,6 @@ def get_test_results(test_id: int, db: Session = Depends(get_db), current_user: 
 @app.post("/api/v1/execute")
 def execute_code(req: CodeExecutionRequest, db: Session = Depends(get_db)):
     # ⚠️ REPLACE 'YOUR_RAPIDAPI_KEY_HERE' WITH YOUR REAL KEY
-    # If you don't have one, this will fail. 
-    # Get free key here: https://rapidapi.com/judge0-official/api/judge0-ce
     
     url = "https://judge0-ce.p.rapidapi.com/submissions?base64_encoded=false&wait=true"
     
@@ -291,7 +366,7 @@ def execute_code(req: CodeExecutionRequest, db: Session = Depends(get_db)):
     payload = { "source_code": req.source_code, "language_id": 71, "stdin": req.stdin }
     headers = {
         "content-type": "application/json",
-        "X-RapidAPI-Key": "0708d014ebmsh3e0532f99384efbp139119jsn3736fb5bd1c2", # <--- PASTE KEY HERE
+        "X-RapidAPI-Key": "0708d014ebmsh3e0532f99384efbp139119jsn3736fb5bd1c2", 
         "X-RapidAPI-Host": "judge0-ce.p.rapidapi.com"
     }
     
