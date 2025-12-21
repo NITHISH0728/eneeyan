@@ -1,8 +1,9 @@
-from fastapi import FastAPI, Depends, HTTPException, status, UploadFile, File, Form
+from fastapi import FastAPI, Depends, HTTPException, status, UploadFile, File, Form, Body
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
-from passlib.context import CryptContext
+# from passlib.context import CryptContext  <-- REMOVED (Causing Crash)
+import bcrypt # ✅ ADDED: Direct Bcrypt (Stable)
 from jose import JWTError, jwt
 from datetime import datetime, timedelta
 from typing import List, Optional
@@ -15,8 +16,9 @@ import json
 import os
 import random
 import string
-import pandas as pd  
+import pandas as pd    
 import requests 
+import razorpay  # ✅ Razorpay Library
 
 # --- 📄 PDF GENERATION IMPORTS ---
 from reportlab.pdfgen import canvas
@@ -44,8 +46,15 @@ SECRET_KEY = "supersecretkey_change_this_in_production"
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+# pwd_context = CryptContext(...) <-- REMOVED (Causing Crash)
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/v1/login") 
+
+# --- 💳 RAZORPAY CONFIGURATION ---
+# ✅ YOUR ACTUAL KEYS
+RAZORPAY_KEY_ID = "rzp_test_Ru8lDcv8KvAiC0" 
+RAZORPAY_KEY_SECRET = "puZLB2DQS8FmH0Z7SNrJtOBb"
+
+client = razorpay.Client(auth=(RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET))
 
 # --- 🗄️ DATABASE UTILITIES ---
 def get_db():
@@ -89,7 +98,7 @@ class EnrollmentRequest(BaseModel):
 class PasswordChange(BaseModel):
     new_password: str
 
-# ✅ NEW: Code Test Models
+# ✅ Code Test Models
 class ProblemSchema(BaseModel):
     title: str
     description: str
@@ -112,14 +121,23 @@ class ContentUpdate(BaseModel):
     title: Optional[str] = None
     url: Optional[str] = None
 
-# ✅ NEW: Execution Request Model
+# ✅ Execution Request Model
 class CodeExecutionRequest(BaseModel):
     source_code: str
     stdin: str
 
-# --- 🔑 AUTH LOGIC ---
-def verify_password(plain, hashed): return pwd_context.verify(plain, hashed)
-def get_password_hash(pw): return pwd_context.hash(pw)
+# --- 🔑 AUTH LOGIC (FIXED FOR PYTHON 3.13) ---
+# We replaced passlib with direct bcrypt calls to stop the 500 Error
+
+def verify_password(plain_password, hashed_password):
+    # Ensure hashed_password is bytes
+    if isinstance(hashed_password, str):
+        hashed_password = hashed_password.encode('utf-8')
+    return bcrypt.checkpw(plain_password.encode('utf-8'), hashed_password)
+
+def get_password_hash(password):
+    # Hash and return as string for database storage
+    return bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
 
 def create_access_token(data: dict):
     to_encode = data.copy()
@@ -140,9 +158,6 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
 def generate_random_password(length=8):
     characters = string.ascii_letters + string.digits + "!@#$"
     return ''.join(random.choice(characters) for i in range(length))
-
-def send_welcome_email(email: str, name: str, password: str, course_names: List[str]):
-    print(f"\n📧 EMAIL TO: {email} | Pass: {password} | Courses: {course_names}\n")
 
 def create_certificate_pdf(student_name: str, course_name: str, date_str: str):
     buffer = io.BytesIO()
@@ -367,6 +382,21 @@ def update_content(content_id: int, update: ContentUpdate, db: Session = Depends
         if update.url: item.content = update.url
         db.commit(); return {"message": "Updated"}
     raise HTTPException(status_code=404)
+
+# --- ✅ RAZORPAY ENDPOINT (FIXED) ---
+@app.post("/api/v1/create-order")
+def create_payment_order(data: dict = Body(...)):
+    amount = data.get("amount") # Amount in RUPEES (e.g., 599)
+
+    # Razorpay expects amount in PAISE (multiply by 100)
+    order_data = {
+        "amount": amount * 100, 
+        "currency": "INR",
+        "payment_capture": 1
+    }
+
+    order = client.order.create(data=order_data)
+    return order
 
 @app.get("/")
 def read_root(): return {"status": "online", "message": "iQmath API Active 🟢"}
