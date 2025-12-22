@@ -588,5 +588,6 @@ def delete_course(course_id: int, db: Session = Depends(get_db), current_user: m
     db.commit()
     
     return {"message": "Course deleted successfully"}
+
 @app.get("/")
 def read_root(): return {"status": "online", "message": "iQmath API Active 🟢"}
