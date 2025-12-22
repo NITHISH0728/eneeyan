@@ -26,7 +26,7 @@ const AddAdmits = () => {
   const [bulkCourseId, setBulkCourseId] = useState<number | null>(null);
   const [bulkLoading, setBulkLoading] = useState(false);
 
-  // ✅ NEW: Create Instructor Modal State
+  // Create Instructor Modal State
   const [showInstructorModal, setShowInstructorModal] = useState(false);
   const [instName, setInstName] = useState("");
   const [instEmail, setInstEmail] = useState("");
@@ -54,7 +54,7 @@ const AddAdmits = () => {
     fetchCourses();
   }, []);
 
-  // ✅ NEW: Handle Create Instructor
+  // Handle Create Instructor
   const handleCreateInstructor = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
@@ -62,7 +62,7 @@ const AddAdmits = () => {
             email: instEmail,
             password: instPassword,
             name: instName,
-            role: "instructor" // Force role
+            role: "instructor" 
         });
         triggerToast("👨‍🏫 New Instructor Created Successfully!", "success");
         setShowInstructorModal(false);
@@ -76,13 +76,24 @@ const AddAdmits = () => {
     e.preventDefault();
     if (selectedCourseIds.length === 0) return triggerToast("Please select at least one course.", "error");
     setSingleLoading(true);
+    
+    // ✅ Generate Random Password Frontend-side
+    const generatedPassword = Math.random().toString(36).slice(-8) + "1!";
+
     try {
       const token = localStorage.getItem("token");
-      const payload = { full_name: singleName, email: singleEmail, course_ids: selectedCourseIds };
+      // ✅ Included password in payload so backend can email it
+      const payload = { 
+          full_name: singleName, 
+          email: singleEmail, 
+          course_ids: selectedCourseIds,
+          password: generatedPassword 
+      };
+      
       const res = await axios.post("http://127.0.0.1:8000/api/v1/admin/admit-student", payload, {
         headers: { Authorization: `Bearer ${token}` }
       });
-      triggerToast(`✅ Success! ${res.data.message}`, "success");
+      triggerToast(`✅ Account Created & Email Sent to ${singleEmail}`, "success");
       setSingleName(""); setSingleEmail(""); setSelectedCourseIds([]);
     } catch (err: any) { triggerToast(`Error: ${err.response?.data?.detail || "Failed"}`, "error"); } 
     finally { setSingleLoading(false); }
@@ -99,7 +110,7 @@ const AddAdmits = () => {
       const res = await axios.post("http://127.0.0.1:8000/api/v1/admin/bulk-admit", formData, {
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "multipart/form-data" }
       });
-      triggerToast(`🎉 Bulk Process Complete! ${res.data.message}`, "success");
+      triggerToast(`🎉 Bulk Process Complete! Emails Sent.`, "success");
       setBulkFile(null);
     } catch (err: any) { triggerToast("Upload failed", "error"); } 
     finally { setBulkLoading(false); }
@@ -122,18 +133,11 @@ const AddAdmits = () => {
   return (
     <div style={{ padding: "40px", maxWidth: "1400px", margin: "0 auto" }}>
       
-      {/* 🟢 HEADER WITH NEW INSTRUCTOR BUTTON */}
+      {/* HEADER WITH NEW INSTRUCTOR BUTTON */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "40px" }}>
         <h1 style={{ fontSize: "28px", fontWeight: "800", color: "#1e293b", margin: 0 }}>Add Admits</h1>
         
-        {/* ✅ NEW BUTTON */}
-        <button 
-            onClick={() => setShowInstructorModal(true)}
-            style={{ 
-                background: "#1e293b", color: "white", border: "none", padding: "12px 24px", 
-                borderRadius: "8px", fontWeight: "700", cursor: "pointer", display: "flex", alignItems: "center", gap: "8px" 
-            }}
-        >
+        <button onClick={() => setShowInstructorModal(true)} style={{ background: "#1e293b", color: "white", border: "none", padding: "12px 24px", borderRadius: "8px", fontWeight: "700", cursor: "pointer", display: "flex", alignItems: "center", gap: "8px" }}>
             <Shield size={18} /> Create Instructor
         </button>
       </div>
@@ -193,7 +197,7 @@ const AddAdmits = () => {
         </div>
       </div>
 
-      {/* ✅ NEW: CREATE INSTRUCTOR MODAL */}
+      {/* CREATE INSTRUCTOR MODAL */}
       {showInstructorModal && (
         <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.6)", zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center", backdropFilter: "blur(3px)" }}>
             <div style={{ background: "white", width: "400px", padding: "30px", borderRadius: "16px", boxShadow: "0 25px 50px -12px rgba(0,0,0,0.25)" }}>

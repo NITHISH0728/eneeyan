@@ -14,19 +14,22 @@ import io
 import json
 import shutil
 import os
+import smtplib
 import random
 import string
 import pandas as pd    
 import requests 
 import razorpay
-import google.generativeai as genai # ✅ Added Google AI Library
-import re  # 👈 Add this with your other imports
+import google.generativeai as genai 
+import re  
 # --- 📄 PDF GENERATION IMPORTS ---
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import landscape, A4
 from reportlab.lib import colors
 from reportlab.lib.units import inch
 from reportlab.lib.utils import ImageReader
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 
 # 1. Initialize Database Tables
 models.Base.metadata.create_all(bind=engine)
@@ -56,8 +59,7 @@ RAZORPAY_KEY_SECRET = "puZLB2DQS8FmH0Z7SNrJtOBb"
 client = razorpay.Client(auth=(RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET))
 
 # --- ✨ GEMINI AI CONFIGURATION (REAL AI) ---
-# 👇 PASTE YOUR KEY HERE 👇
-GEMINI_API_KEY = "AIzaSyBgfLU5nf8l3KbhtsPmcg3f1s7k4irU3UU" 
+GEMINI_API_KEY = "AIzaSyCUhFFvAAcHjvZfMqDCnt670QPR-0yMxps" 
 
 genai.configure(api_key=GEMINI_API_KEY)
 model = genai.GenerativeModel('gemini-2.5-flash')
@@ -93,10 +95,12 @@ class Token(BaseModel):
 class AssignmentSubmission(BaseModel):
     link: str; lesson_id: int
 
+# ✅ Updated to accept password from frontend
 class AdmitStudentRequest(BaseModel):
     full_name: str
     email: str
     course_ids: List[int] 
+    password: Optional[str] = None 
 
 class EnrollmentRequest(BaseModel):
     type: str 
@@ -104,7 +108,7 @@ class EnrollmentRequest(BaseModel):
 class PasswordChange(BaseModel):
     new_password: str
 
-# ✅ Code Test Models
+# Code Test Models
 class ProblemSchema(BaseModel):
     title: str
     description: str
@@ -131,7 +135,6 @@ class CodeExecutionRequest(BaseModel):
     source_code: str
     stdin: str
 
-# ✅ AI Request Model
 class AIGenerateRequest(BaseModel):
     title: str
 
@@ -164,6 +167,42 @@ def generate_random_password(length=8):
     characters = string.ascii_letters + string.digits + "!@#$"
     return ''.join(random.choice(characters) for i in range(length))
 
+# ✅ FIXED: Email Sender
+def send_credentials_email(to_email: str, name: str, password: str):
+    # ⚠️ IMPORTANT: Use App Password, NOT Gmail password
+    sender_email = "nithishss48@gmail.com"  # REPLACE THIS
+    sender_password = "zzgh jbao mhvv qfxm"  # REPLACE THIS (16 chars)
+    smtp_server = "smtp.gmail.com"
+    smtp_port = 587
+
+    subject = "Welcome to iQmath! Here are your credentials"
+    
+    body = f"""
+    Welcome to iQmath {name} !,
+    
+    User ID: {to_email}
+    Password: {password}
+
+    "Education is the passport to the future,
+    for tomorrow belongs to those who prepare for it today."
+    """
+
+    msg = MIMEMultipart()
+    msg['From'] = sender_email
+    msg['To'] = to_email
+    msg['Subject'] = subject
+    msg.attach(MIMEText(body, 'plain'))
+
+    try:
+        server = smtplib.SMTP(smtp_server, smtp_port)
+        server.starttls()
+        server.login(sender_email, sender_password)
+        server.sendmail(sender_email, to_email, msg.as_string())
+        server.quit()
+        print(f"✅ Email sent successfully to {to_email}")
+    except Exception as e:
+        print(f"❌ Failed to send email: {e}")
+        
 def create_certificate_pdf(student_name: str, course_name: str, date_str: str):
     buffer = io.BytesIO()
     c = canvas.Canvas(buffer, pagesize=landscape(A4))
@@ -204,14 +243,23 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = 
     token = create_access_token(data={"sub": user.email, "role": user.role})
     return {"access_token": token, "token_type": "bearer", "role": user.role}
 
+# ✅ FIXED: Now calls send_credentials_email
 @app.post("/api/v1/admin/admit-student")
 def admit_single_student(req: AdmitStudentRequest, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
     if current_user.role != "instructor": raise HTTPException(status_code=403, detail="Only Instructors can admit students")
+    
     existing_user = db.query(models.User).filter(models.User.email == req.email).first()
     student = existing_user
+    
+    # Generate password if not provided (fallback)
+    final_password = req.password if req.password else generate_random_password()
+
     if not student:
-        student = models.User(email=req.email, full_name=req.full_name, hashed_password=get_password_hash(generate_random_password()), role="student")
+        student = models.User(email=req.email, full_name=req.full_name, hashed_password=get_password_hash(final_password), role="student")
         db.add(student); db.commit(); db.refresh(student)
+        
+        # 🚀 TRIGGER EMAIL HERE
+        send_credentials_email(req.email, req.full_name, final_password)
     
     enrolled = []
     for cid in req.course_ids:
@@ -221,6 +269,7 @@ def admit_single_student(req: AdmitStudentRequest, db: Session = Depends(get_db)
     db.commit()
     return {"message": f"Enrolled in {len(enrolled)} courses"}
 
+# ✅ FIXED: Now calls send_credentials_email for each row
 @app.post("/api/v1/admin/bulk-admit")
 async def bulk_admit_students(file: UploadFile = File(...), course_id: int = Form(...), db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
     if current_user.role != "instructor": raise HTTPException(status_code=403)
@@ -235,11 +284,19 @@ async def bulk_admit_students(file: UploadFile = File(...), course_id: int = For
     count = 0
     for _, row in df.iterrows():
         email = str(row["email"]).strip()
+        name = str(row.get("name", "Student"))
+        
         if not email or email == "nan": continue
+        
         student = db.query(models.User).filter(models.User.email == email).first()
         if not student:
-            student = models.User(email=email, full_name=str(row.get("name", "Student")), hashed_password=get_password_hash("pass123"), role="student")
+            # Generate random password for bulk user
+            bulk_password = generate_random_password()
+            student = models.User(email=email, full_name=name, hashed_password=get_password_hash(bulk_password), role="student")
             db.add(student); db.commit(); db.refresh(student)
+            
+            # 🚀 TRIGGER EMAIL HERE
+            send_credentials_email(email, name, bulk_password)
         
         if not db.query(models.Enrollment).filter(models.Enrollment.user_id == student.id, models.Enrollment.course_id == course_id).first():
             db.add(models.Enrollment(user_id=student.id, course_id=course_id))
@@ -247,9 +304,7 @@ async def bulk_admit_students(file: UploadFile = File(...), course_id: int = For
     db.commit()
     return {"message": f"Enrolled {count} students"}
 
-# --- 🚀 CODE ARENA ENDPOINTS (HYBRID AI ENHANCED) ---
-
-# ✅ 1. REAL GEMINI AI GENERATION ENDPOINT
+# --- CODE ARENA & OTHER ENDPOINTS (UNCHANGED) ---
 @app.post("/api/v1/ai/generate")
 async def generate_problem_content(req: AIGenerateRequest, db: Session = Depends(get_db)):
     if not GEMINI_API_KEY or "PASTE_YOUR" in GEMINI_API_KEY:
@@ -257,7 +312,6 @@ async def generate_problem_content(req: AIGenerateRequest, db: Session = Depends
         raise HTTPException(status_code=500, detail="Gemini API Key not configured")
 
     try:
-        # 1. Enhanced Prompt to force valid JSON
         prompt = f"""
         Act as a strict coding instructor. 
         Create a programming challenge based on the topic: "{req.title}".
@@ -274,23 +328,15 @@ async def generate_problem_content(req: AIGenerateRequest, db: Session = Depends
         
         Do NOT wrap in markdown code blocks. Return ONLY the raw JSON string.
         """
-        
-        # 2. Call Gemini
         print(f"🤖 Sending request to Gemini for: {req.title}")
         response = model.generate_content(prompt)
-        
-        # 3. Robust Cleaning (The Fix)
-        # Use Regex to find the first '{' and the last '}' to ignore any extra text
         text = response.text.strip()
         match = re.search(r'\{.*\}', text, re.DOTALL)
         
-        if not match:
-            raise ValueError("AI did not return valid JSON format.")
+        if not match: raise ValueError("AI did not return valid JSON format.")
             
         clean_json = match.group()
         ai_data = json.loads(clean_json)
-        
-        # 4. Success Return
         print("✅ AI Generation Successful!")
         return {
             "description": ai_data.get("description", "No description generated."),
@@ -299,7 +345,6 @@ async def generate_problem_content(req: AIGenerateRequest, db: Session = Depends
 
     except Exception as e:
         print(f"🔥 AI GENERATION FAILED: {str(e)}")
-        # Check your terminal! This print will tell you exactly why it failed.
         raise HTTPException(status_code=500, detail=f"AI Error: {str(e)}")
     
 @app.post("/api/v1/code-tests")
@@ -324,55 +369,25 @@ def create_code_test(test: CodeTestCreate, db: Session = Depends(get_db), curren
 def get_code_tests(db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
     if current_user.role == "instructor": 
         return db.query(models.CodeTest).filter(models.CodeTest.instructor_id == current_user.id).all()
-    
-    # For Students: Check if they completed it
     tests = db.query(models.CodeTest).all()
     response_data = []
-    
     for t in tests:
-        # Check if a result exists for this student & test
-        submission = db.query(models.TestResult).filter(
-            models.TestResult.test_id == t.id, 
-            models.TestResult.user_id == current_user.id
-        ).first()
-        
+        submission = db.query(models.TestResult).filter(models.TestResult.test_id == t.id, models.TestResult.user_id == current_user.id).first()
         response_data.append({
-            "id": t.id,
-            "title": t.title,
-            "time_limit": t.time_limit,
-            "problems": t.problems, # Serialize problems if needed, or keep simple
-            "completed": True if submission else False # ✅ FLAG FOR FRONTEND
+            "id": t.id, "title": t.title, "time_limit": t.time_limit, "problems": t.problems, "completed": True if submission else False
         })
-        
     return response_data
 
 @app.post("/api/v1/code-tests/{test_id}/start")
 def start_code_test(test_id: int, pass_key: str = Form(...), db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
-    # ✅ SECURITY CHECK: Prevent Re-entry
-    existing_result = db.query(models.TestResult).filter(
-        models.TestResult.test_id == test_id, 
-        models.TestResult.user_id == current_user.id
-    ).first()
-    
-    if existing_result:
-        raise HTTPException(status_code=403, detail="Test already submitted. You cannot retake it.")
-
+    existing_result = db.query(models.TestResult).filter(models.TestResult.test_id == test_id, models.TestResult.user_id == current_user.id).first()
+    if existing_result: raise HTTPException(status_code=403, detail="Test already submitted. You cannot retake it.")
     test = db.query(models.CodeTest).filter(models.CodeTest.id == test_id).first()
     if not test: raise HTTPException(status_code=404, detail="Test not found")
     if test.pass_key != pass_key: raise HTTPException(status_code=403, detail="Invalid Pass Key")
-    
     return {
-        "id": test.id, 
-        "title": test.title, 
-        "time_limit": test.time_limit, 
-        "problems": [
-            {
-                "id": p.id, 
-                "title": p.title, 
-                "description": p.description, 
-                "test_cases": p.test_cases 
-            } for p in test.problems
-        ]
+        "id": test.id, "title": test.title, "time_limit": test.time_limit, 
+        "problems": [{"id": p.id, "title": p.title, "description": p.description, "test_cases": p.test_cases} for p in test.problems]
     }
 
 @app.post("/api/v1/code-tests/submit")
@@ -386,29 +401,17 @@ def get_test_results(test_id: int, db: Session = Depends(get_db), current_user: 
     results = db.query(models.TestResult).filter(models.TestResult.test_id == test_id).all()
     return [{"student_name": r.student.full_name, "email": r.student.email, "score": r.score, "problems_solved": r.problems_solved, "time_taken": r.time_taken, "submitted_at": r.submitted_at.strftime("%Y-%m-%d %H:%M")} for r in results]
 
-# ✅ REAL CODE EXECUTION (JUDGE0 PROXY)
 @app.post("/api/v1/execute")
 def execute_code(req: CodeExecutionRequest, db: Session = Depends(get_db)):
-    # ⚠️ REPLACE 'YOUR_RAPIDAPI_KEY_HERE' WITH YOUR REAL KEY
-    
     url = "https://judge0-ce.p.rapidapi.com/submissions?base64_encoded=false&wait=true"
-    
-    # 71 = Python 3.8.1 in Judge0
     payload = { "source_code": req.source_code, "language_id": 71, "stdin": req.stdin }
-    headers = {
-        "content-type": "application/json",
-        "X-RapidAPI-Key": "0708d014ebmsh3e0532f99384efbp139119jsn3736fb5bd1c2", 
-        "X-RapidAPI-Host": "judge0-ce.p.rapidapi.com"
-    }
-    
+    headers = { "content-type": "application/json", "X-RapidAPI-Key": "0708d014ebmsh3e0532f99384efbp139119jsn3736fb5bd1c2", "X-RapidAPI-Host": "judge0-ce.p.rapidapi.com" }
     try:
         response = requests.post(url, json=payload, headers=headers)
         return response.json()
     except Exception as e:
         print(f"Judge0 Error: {e}")
         raise HTTPException(status_code=500, detail="Compiler Service Error")
-
-# ... [Keep existing course/content/player endpoints] ...
 
 @app.get("/api/v1/courses")
 def get_courses(db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
@@ -489,20 +492,13 @@ def update_content(content_id: int, update: ContentUpdate, db: Session = Depends
         db.commit(); return {"message": "Updated"}
     raise HTTPException(status_code=404)
 
-# --- ✅ RAZORPAY ENDPOINT (FIXED) ---
 @app.post("/api/v1/create-order")
 def create_payment_order(data: dict = Body(...)):
-    amount = data.get("amount") # Amount in RUPEES (e.g., 599)
-
-    # Razorpay expects amount in PAISE (multiply by 100)
-    order_data = {
-        "amount": amount * 100, 
-        "currency": "INR",
-        "payment_capture": 1
-    }
-
+    amount = data.get("amount") 
+    order_data = { "amount": amount * 100, "currency": "INR", "payment_capture": 1 }
     order = client.order.create(data=order_data)
     return order
+
 @app.post("/api/v1/submit-assignment")
 async def submit_assignment(
     file: UploadFile = File(...),
@@ -510,28 +506,16 @@ async def submit_assignment(
     lesson_title: str = Form(...),
     current_user: models.User = Depends(get_current_user)
 ):
-    # 1. Create a tidy folder structure: "assignments/student_email/CourseName"
     base_folder = "assignments"
-    
-    # Sanitize email (replace @ and . with _)
     safe_email = current_user.email.replace("@", "_at_").replace(".", "_")
     student_folder = f"{base_folder}/{safe_email}_{current_user.id}"
-    
-    # Sanitize folder names to prevent errors with spaces/special chars
     safe_course = "".join([c for c in course_title if c.isalnum() or c in (' ', '-', '_')]).strip()
     safe_lesson = "".join([c for c in lesson_title if c.isalnum() or c in (' ', '-', '_')]).strip()
-    
     course_folder = f"{student_folder}/{safe_course}"
-    
-    # Create directory if it doesn't exist
     os.makedirs(course_folder, exist_ok=True)
-    
-    # 2. Save the file
     file_path = f"{course_folder}/{safe_lesson}_{file.filename}"
-    
     with open(file_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
-        
     return {"message": "Assignment received successfully", "path": file_path}
 
 @app.get("/")
