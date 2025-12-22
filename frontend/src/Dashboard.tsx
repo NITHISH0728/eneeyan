@@ -1,22 +1,30 @@
 import { useState, useEffect } from "react";
 import axios from "axios";
 import { 
-  Users, TrendingUp, DollarSign, BookOpen, 
+  Users, TrendingUp, IndianRupee, BookOpen, 
   UserPlus, FileText, MessageSquare
-} from "lucide-react";
+} from "lucide-react"; // ✅ Imported IndianRupee
 import { motion } from "framer-motion";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area } from 'recharts';
 
 const Dashboard = () => {
-  const [stats, setStats] = useState({ revenue: 1250, students: 45, courses: 3, newEnrollments: 5, pendingReviews: 2, messages: 8 });
+  // ✅ Initialize with 0 so it animates to the real number
+  const [stats, setStats] = useState({ 
+    revenue: 0, 
+    students: 0, 
+    courses: 0, 
+    newEnrollments: 0, 
+    pendingReviews: 2, 
+    messages: 8 
+  });
 
-  // Mock Data
+  // Mock Data for Charts (Keep as visual placeholder)
   const activityData = [ { name: 'Mon', students: 12 }, { name: 'Tue', students: 19 }, { name: 'Wed', students: 35 }, { name: 'Thu', students: 28 }, { name: 'Fri', students: 45 }, { name: 'Sat', students: 60 }, { name: 'Sun', students: 55 } ];
   const sparkData = [ { val: 10 }, { val: 20 }, { val: 15 }, { val: 30 }, { val: 45 }, { val: 60 } ];
 
   // 🎨 PROFESSIONAL THEME COLORS
   const theme = {
-    cardBg: "#F8FAFC",      // ✅ Off-White / Very Light Gray
+    cardBg: "#F8FAFC",      // Off-White / Very Light Gray
     border: "#cbd5e1",      // Subtle Border
     textMain: "#1e293b",    // Dark Slate
     textLight: "#64748b",   // Muted Slate
@@ -28,9 +36,28 @@ const Dashboard = () => {
     const fetchStats = async () => {
       const token = localStorage.getItem("token");
       try {
-        const res = await axios.get("http://127.0.0.1:8000/api/v1/courses", { headers: { Authorization: `Bearer ${token}` } });
-        setStats(prev => ({ ...prev, courses: res.data.length }));
-      } catch (err) { console.error(err); }
+        const config = { headers: { Authorization: `Bearer ${token}` } };
+        
+        // 1. Fetch Real Courses Count
+        const coursesRes = await axios.get("http://127.0.0.1:8000/api/v1/courses", config);
+        
+        // 2. Fetch Real Students Count
+        const studentsRes = await axios.get("http://127.0.0.1:8000/api/v1/admin/students", config);
+
+        // 3. Calculate Real Stats
+        const studentCount = studentsRes.data.length;
+        const courseCount = coursesRes.data.length;
+        const revenue = studentCount * 599; // Assuming ₹599 per student
+
+        setStats(prev => ({
+            ...prev,
+            revenue: revenue,
+            students: studentCount,
+            courses: courseCount,
+            newEnrollments: studentCount // Showing total students as new enrollments for now
+        }));
+
+      } catch (err) { console.error("Failed to load dashboard stats", err); }
     };
     fetchStats();
   }, []);
@@ -67,11 +94,10 @@ const Dashboard = () => {
                 initial={{ y: 20, opacity: 0 }} 
                 animate={{ y: 0, opacity: 1 }} 
                 transition={{ delay: i * 0.1 }} 
-                style={{ background: theme.cardBg, borderColor: theme.border }} // ✅ Theme Applied
+                style={{ background: theme.cardBg, borderColor: theme.border }} 
                 className="p-5 rounded-2xl border shadow-sm flex items-center gap-5"
               >
                   <div className="w-12 h-12 rounded-xl bg-slate-100 flex items-center justify-center text-slate-500">
-                    {/* ✅ Thinner Stroke (1.5) for Professional Look */}
                     <item.icon size={24} strokeWidth={1.5} color={theme.iconColor} />
                   </div>
                   <div>
@@ -103,15 +129,17 @@ const Dashboard = () => {
               </div>
           </div>
 
-          {/* REVENUE */}
+          {/* REVENUE (Changed to Rupee) */}
           <div style={{ background: theme.cardBg, borderColor: theme.border }} className="p-6 rounded-2xl border">
               <div className="flex justify-between items-start mb-4">
                 <div>
                     <p className="text-xs font-bold text-slate-500 uppercase">Revenue</p>
-                    <h2 className="text-3xl font-bold text-slate-800 mt-1"><AnimatedCounter value={stats.revenue} prefix="$" /></h2>
+                    {/* ✅ Changed Prefix to Rupee Symbol */}
+                    <h2 className="text-3xl font-bold text-slate-800 mt-1"><AnimatedCounter value={stats.revenue} prefix="₹" /></h2>
                 </div>
                 <div className="p-2 bg-slate-100 rounded-lg">
-                    <DollarSign size={24} strokeWidth={1.5} color={theme.iconColor} />
+                    {/* ✅ Changed Icon to IndianRupee */}
+                    <IndianRupee size={24} strokeWidth={1.5} color={theme.iconColor} />
                 </div>
               </div>
               <div className="h-10 w-full">

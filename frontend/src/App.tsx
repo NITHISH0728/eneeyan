@@ -17,7 +17,7 @@ import CoursePreview from "./CoursePreview";
 import CodeArena from "./CodeArena"; 
 import Dashboard from "./Dashboard"; 
 import InstructorSettings from "./InstructorSettings"; // ✅ Import Settings
-
+import StudentManagement from "./StudentManagement";
 // ... (CourseList component remains the same) ...
 const CourseList = () => {
   const [courses, setCourses] = useState([]);
@@ -65,7 +65,7 @@ function App() {
           <Route path="add-admits" element={<AddAdmits />} />
           <Route path="course/:courseId/preview" element={<CoursePreview />} />
           <Route path="code-arena" element={<CodeArena />} />
-          
+          <Route path="students" element={<StudentManagement />} />
           {/* ✅ ADD SETTINGS ROUTE */}
           <Route path="settings" element={<InstructorSettings />} />
         </Route>

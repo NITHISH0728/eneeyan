@@ -518,5 +518,75 @@ async def submit_assignment(
         shutil.copyfileobj(file.file, buffer)
     return {"message": "Assignment received successfully", "path": file_path}
 
+@app.get("/api/v1/admin/students")
+def get_all_students(db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
+    # Security: Only instructors can view this
+    if current_user.role != "instructor": 
+        raise HTTPException(status_code=403, detail="Access Denied")
+    
+    # 1. Get all users who are 'students'
+    students = db.query(models.User).filter(models.User.role == "student").all()
+    
+    real_data = []
+    for s in students:
+        # 2. Get their enrolled courses
+        enrollments = db.query(models.Enrollment).filter(models.Enrollment.user_id == s.id).all()
+        course_ids = [e.course_id for e in enrollments]
+        
+        # Fetch course names securely
+        if course_ids:
+            courses = db.query(models.Course).filter(models.Course.id.in_(course_ids)).all()
+            course_names = [c.title for c in courses]
+        else:
+            course_names = []
+
+        # 3. Format Date (Handle cases where created_at might be missing)
+        join_date = s.created_at.strftime("%Y-%m-%d") if hasattr(s, "created_at") and s.created_at else "N/A"
+
+        real_data.append({
+            "id": s.id,
+            "full_name": s.full_name,
+            "email": s.email,
+            "joined_at": join_date,
+            "enrolled_courses": course_names
+        })
+        
+    return real_data
+
+@app.delete("/api/v1/admin/students/{user_id}")
+def delete_student(user_id: int, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
+    if current_user.role != "instructor": 
+        raise HTTPException(status_code=403, detail="Access Denied")
+        
+    student = db.query(models.User).filter(models.User.id == user_id).first()
+    if not student: 
+        raise HTTPException(status_code=404, detail="Student not found")
+    
+    # Optional: Delete their enrollments first to be clean
+    db.query(models.Enrollment).filter(models.Enrollment.user_id == user_id).delete()
+    db.query(models.TestResult).filter(models.TestResult.user_id == user_id).delete()
+    
+    # Delete the user
+    db.delete(student)
+    db.commit()
+    
+    return {"message": "Student removed successfully"}
+
+@app.delete("/api/v1/courses/{course_id}")
+def delete_course(course_id: int, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
+    if current_user.role != "instructor": 
+        raise HTTPException(status_code=403, detail="Access Denied")
+    
+    # Find course owned by this instructor
+    course = db.query(models.Course).filter(models.Course.id == course_id, models.Course.instructor_id == current_user.id).first()
+    
+    if not course: 
+        raise HTTPException(status_code=404, detail="Course not found")
+    
+    # Delete the course (Cascades should handle modules/content if configured in DB, otherwise this removes the course entry)
+    db.delete(course)
+    db.commit()
+    
+    return {"message": "Course deleted successfully"}
 @app.get("/")
 def read_root(): return {"status": "online", "message": "iQmath API Active 🟢"}

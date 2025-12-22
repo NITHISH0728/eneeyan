@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Outlet, useNavigate, useLocation } from "react-router-dom";
 import { 
   LayoutDashboard, BookOpen, UserPlus, PlusCircle, LogOut, Bell, 
-  ChevronRight, Code, Menu, Settings 
+  ChevronRight, Code, Menu, Settings, Users // ✅ Added Users Icon
 } from "lucide-react"; 
 
 const DashboardLayout = () => {
@@ -34,11 +34,13 @@ const DashboardLayout = () => {
   };
 
   const menuItems = [
-    { label: "Home", path: "/dashboard", icon: LayoutDashboard },
-    { label: "My Courses", path: "/dashboard/courses", icon: BookOpen },
-    { label: "Code Arena", path: "/dashboard/code-arena", icon: Code },
-    { label: "Add Admits", path: "/dashboard/add-admits", icon: UserPlus },
-    { label: "Create Course", path: "/dashboard/create-course", icon: PlusCircle },
+    { label: "Home", path: "/dashboard", icon: <LayoutDashboard size={20} /> },
+    { label: "My Courses", path: "/dashboard/courses", icon: <BookOpen size={20} /> },
+    { label: "Code Arena", path: "/dashboard/code-arena", icon: <Code size={20} /> },
+    { label: "Add Admits", path: "/dashboard/add-admits", icon: <UserPlus size={20} /> },
+    // ✅ NEW: Student Management Link
+    { label: "Students", path: "/dashboard/students", icon: <Users size={20} /> },
+    { label: "Create Course", path: "/dashboard/create-course", icon: <PlusCircle size={20} /> },
   ];
 
   const handleLogout = () => {
@@ -82,7 +84,6 @@ const DashboardLayout = () => {
         <nav style={{ flex: 1, padding: "24px 12px", display: "flex", flexDirection: "column", gap: "8px", overflowY: "auto" }}>
           {menuItems.map((item) => {
             const isActive = location.pathname === item.path || location.pathname === item.path + "/";
-            const Icon = item.icon;
             
             return (
               <div 
@@ -102,7 +103,7 @@ const DashboardLayout = () => {
                 }}
               >
                 <div style={{ display: "flex", alignItems: "center", gap: "14px" }}>
-                  <Icon size={20} strokeWidth={1.5} /> 
+                  {item.icon}
                   {!collapsed && <span style={{ fontSize: "15px" }}>{item.label}</span>}
                 </div>
                 {!collapsed && isActive && <ChevronRight size={16} color={brand.iqBlue} strokeWidth={2.5} />}
