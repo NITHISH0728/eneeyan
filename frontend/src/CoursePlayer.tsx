@@ -2,7 +2,6 @@ import { useState, useEffect, useRef, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import axios from "axios";
 import Editor from "@monaco-editor/react"; 
-// ✅ SWITCHED TO 'plyr-react' FOR PRIVATE VIDEO SUPPORT
 import Plyr from "plyr-react"; 
 import "plyr/dist/plyr.css"; 
 
@@ -12,7 +11,7 @@ import {
   ExternalLink, File as FileIcon, X, CheckCircle, AlertCircle
 } from "lucide-react";
 
-// --- 🎥 COMPONENT: FACE PROCTORING CAM ---
+// --- 🎥 COMPONENT: FACE PROCTORING CAM (KEPT FROM EXISTING FILE) ---
 const FaceProctoring = () => {
   const videoRef = useRef<HTMLVideoElement>(null);
 
@@ -43,7 +42,7 @@ const FaceProctoring = () => {
   );
 };
 
-// --- 💻 COMPONENT: PROFESSIONAL CODE ARENA ---
+// --- 💻 COMPONENT: PROFESSIONAL CODE ARENA (KEPT FROM EXISTING FILE) ---
 const CodeCompiler = ({ lesson }: { lesson: any }) => {
   const [code, setCode] = useState(lesson.initial_code || "# Write your solution here...\nprint('Hello iQmath')");
   const [output, setOutput] = useState("Ready to execute...");
@@ -153,7 +152,7 @@ const CoursePlayer = () => {
 
   const brand = { blue: "#005EB8", green: "#87C232", textMain: "#0f172a", textLight: "#64748b" };
 
-  // --- Payment Logic ---
+  // --- Payment Logic (KEPT FROM EXISTING FILE) ---
   const handlePayment = async () => {
     try {
         const orderUrl = "http://127.0.0.1:8000/api/v1/create-order";
@@ -189,7 +188,17 @@ const CoursePlayer = () => {
   }, [courseId]);
 
   const toggleModule = (moduleId: number) => setExpandedModules(prev => prev.includes(moduleId) ? prev.filter(id => id !== moduleId) : [...prev, moduleId]);
-  const getEmbedUrl = (url: string) => url?.replace("/view", "/preview") || "";
+  
+  // ✅ FIX: "Smart Link Converter" (IMPORTED FROM OLD CODE)
+  const getEmbedUrl = (url: string) => {
+    if (!url) return "";
+    // If it's a Google Form, make it embedded
+    if (url.includes("docs.google.com/forms")) {
+        return url.replace(/\/viewform.*/, "/viewform?embedded=true").replace(/\/view.*/, "/viewform?embedded=true");
+    }
+    // If it's a Drive File, use preview mode
+    return url.replace("/view", "/preview");
+  };
 
   // ✅ HELPER: Extract YouTube ID
   const getYoutubeId = (url: string) => {
@@ -198,7 +207,7 @@ const CoursePlayer = () => {
     return (match && match[2].length === 11) ? match[2] : null;
   };
 
-  // ✅ MEMOIZED PLYR OPTIONS (Private Player Logic)
+  // ✅ MEMOIZED PLYR OPTIONS
   const plyrOptions = useMemo(() => ({
     controls: ['play-large', 'play', 'progress', 'current-time', 'mute', 'volume', 'fullscreen'],
     youtube: { noCookie: true, rel: 0, showinfo: 0, iv_load_policy: 3, modestbranding: 1 },
@@ -238,7 +247,23 @@ const CoursePlayer = () => {
     // 📝 1. NOTES
     if (activeLesson.type === "note") return <iframe src={getEmbedUrl(activeLesson.url)} width="100%" height="100%" className="bg-white border-0" allow="autoplay" />;
     
-    // 🎥 2. VIDEO (✅ UPDATED: WORKING PRIVATE PLAYER FROM BACKUP)
+    // ✅ 2. QUIZ (Google Forms - IMPORTED FROM OLD CODE)
+    if (activeLesson.type === "quiz") {
+        return (
+            <div className="w-full h-full bg-slate-50 flex flex-col items-center justify-center p-4">
+                <iframe 
+                    src={getEmbedUrl(activeLesson.url)} 
+                    width="100%" 
+                    height="100%" 
+                    frameBorder="0" 
+                    className="rounded-xl shadow-sm border border-slate-200 bg-white max-w-4xl"
+                    allowFullScreen
+                >Loading...</iframe>
+            </div>
+        );
+    }
+
+    // 🎥 3. VIDEO (KEPT EXISTING PRIVATE PLAYER)
     if (activeLesson.type === "video" || activeLesson.type === "live_class") {
         const videoId = getYoutubeId(activeLesson.url);
         
@@ -267,10 +292,10 @@ const CoursePlayer = () => {
         );
     }
     
-    // 💻 3. CODE ARENA
+    // 💻 4. CODE ARENA
     if (activeLesson.type === "code_test") return <CodeCompiler lesson={activeLesson} />;
     
-    // 📂 4. ASSIGNMENT (Direct Upload)
+    // 📂 5. ASSIGNMENT (Direct Upload - KEPT EXISTING LOGIC)
     if (activeLesson.type === "assignment") {
       return (
         <div className="flex flex-col items-center justify-center h-full bg-[#F8FAFC] p-8 font-sans text-slate-800">
@@ -355,6 +380,8 @@ const CoursePlayer = () => {
                             <div className={isActive ? "text-blue-600" : "text-slate-400"}>
                               {lesson.type.includes("video") && <PlayCircle size={16} />}
                               {lesson.type === "note" && <FileText size={16} />}
+                              {/* ✅ ADDED QUIZ ICON LOGIC HERE */}
+                              {lesson.type === "quiz" && <HelpCircle size={16} />} 
                               {lesson.type.includes("code") && <Code size={16} />}
                               {lesson.type === "assignment" && <UploadCloud size={16} />}
                             </div>

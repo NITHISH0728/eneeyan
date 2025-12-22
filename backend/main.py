@@ -17,7 +17,7 @@ import os
 import smtplib
 import random
 import string
-import pandas as pd    
+import pandas as pd     
 import requests 
 import razorpay
 import google.generativeai as genai 
@@ -30,6 +30,12 @@ from reportlab.lib.units import inch
 from reportlab.lib.utils import ImageReader
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+
+# 🟢 NEW GOOGLE DRIVE IMPORTS (OAUTH)
+from google.auth.transport.requests import Request
+from google.oauth2.credentials import Credentials
+from googleapiclient.discovery import build
+from googleapiclient.http import MediaIoBaseUpload
 
 # 1. Initialize Database Tables
 models.Base.metadata.create_all(bind=engine)
@@ -202,7 +208,60 @@ def send_credentials_email(to_email: str, name: str, password: str):
         print(f"✅ Email sent successfully to {to_email}")
     except Exception as e:
         print(f"❌ Failed to send email: {e}")
+ 
+# 🟢 UPDATED: Upload to Drive using TOKEN.JSON (OAuth)
+def upload_file_to_drive(file_obj, filename, folder_link):
+    try:
+        # A. Extract Folder ID
+        folder_id = folder_link
+        if "drive.google.com" in folder_link:
+            folder_id = folder_link.split("/")[-1].split("?")[0]
+
+        # B. Authenticate using token.json
+        TOKEN_FILE = 'token.json'
+        creds = None
         
+        if os.path.exists(TOKEN_FILE):
+            creds = Credentials.from_authorized_user_file(TOKEN_FILE, ['https://www.googleapis.com/auth/drive.file'])
+        
+        # If no valid credentials available, fail gracefully
+        if not creds or not creds.valid:
+            if creds and creds.expired and creds.refresh_token:
+                try:
+                    creds.refresh(Request())
+                    # Save refreshed token
+                    with open(TOKEN_FILE, 'w') as token:
+                        token.write(creds.to_json())
+                except:
+                    print("❌ Token expired and refresh failed.")
+                    return None
+            else:
+                print("❌ Error: Valid token.json not found! Run get_token.py first.")
+                return None
+
+        service = build('drive', 'v3', credentials=creds)
+
+        # C. Upload Config
+        file_metadata = {
+            'name': filename,
+            'parents': [folder_id] 
+        }
+
+        # D. Execute Upload
+        media = MediaIoBaseUpload(file_obj, mimetype='application/pdf', resumable=True)
+        uploaded_file = service.files().create(
+            body=file_metadata, 
+            media_body=media, 
+            fields='id'
+        ).execute()
+
+        print(f"✅ Google Drive Upload Success! File ID: {uploaded_file.get('id')}")
+        return uploaded_file.get('id')
+
+    except Exception as e:
+        print(f"🔥 Google Drive Upload Failed: {str(e)}")
+        return None
+            
 def create_certificate_pdf(student_name: str, course_name: str, date_str: str):
     buffer = io.BytesIO()
     c = canvas.Canvas(buffer, pagesize=landscape(A4))
@@ -502,21 +561,57 @@ def create_payment_order(data: dict = Body(...)):
 @app.post("/api/v1/submit-assignment")
 async def submit_assignment(
     file: UploadFile = File(...),
+    lesson_title: str = Form(...), 
     course_title: str = Form(...),
-    lesson_title: str = Form(...),
+    db: Session = Depends(get_db),
+    # ✅ FIX: Removed 'auth.' prefix here
     current_user: models.User = Depends(get_current_user)
 ):
-    base_folder = "assignments"
-    safe_email = current_user.email.replace("@", "_at_").replace(".", "_")
-    student_folder = f"{base_folder}/{safe_email}_{current_user.id}"
-    safe_course = "".join([c for c in course_title if c.isalnum() or c in (' ', '-', '_')]).strip()
-    safe_lesson = "".join([c for c in lesson_title if c.isalnum() or c in (' ', '-', '_')]).strip()
-    course_folder = f"{student_folder}/{safe_course}"
-    os.makedirs(course_folder, exist_ok=True)
-    file_path = f"{course_folder}/{safe_lesson}_{file.filename}"
-    with open(file_path, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
-    return {"message": "Assignment received successfully", "path": file_path}
+    print(f"📥 Receiving Assignment: {file.filename} from {current_user.full_name}")
+
+    # 1. Look up the Assignment in DB to find the Instructor's Drive Link
+    # We search for the content item by title and type
+    assignment_data = db.query(models.ContentItem).filter(
+        models.ContentItem.title == lesson_title,
+        models.ContentItem.type == "assignment"
+    ).first()
+
+    drive_status = "Not Uploaded"
+    
+    # 2. Read the file
+    content = await file.read()
+    
+    # 3. Create a unique filename (Student Name + Original File Name)
+    safe_filename = f"{current_user.full_name}_{file.filename}"
+
+    # 4. Attempt Upload to Drive
+    if assignment_data and assignment_data.content: # Use .content instead of .data_url if model uses content
+        instructor_folder_link = assignment_data.content # Changed to match model field 'content'
+        print(f"🔗 Found Target Drive Link: {instructor_folder_link}")
+        
+        # Create a stream for the upload function
+        file_stream = io.BytesIO(content)
+        
+        # 🚀 THE MAGIC UPLOAD
+        file_id = upload_file_to_drive(file_stream, safe_filename, instructor_folder_link)
+        
+        if file_id:
+            drive_status = "✅ Successfully sent to Instructor's Drive"
+        else:
+            drive_status = "⚠️ Drive Upload Failed (Check Backend Console)"
+    else:
+        print("⚠️ No Drive Link found in database for this assignment.")
+        drive_status = "Skipped (No Folder Link Configured)"
+
+    # 5. Local Backup (Optional but safe)
+    os.makedirs("assignments_backup", exist_ok=True)
+    with open(f"assignments_backup/{safe_filename}", "wb") as f:
+        f.write(content)
+
+    return {
+        "message": "Assignment Submitted Successfully",
+        "drive_status": drive_status
+    }
 
 @app.get("/api/v1/admin/students")
 def get_all_students(db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
