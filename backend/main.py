@@ -505,11 +505,37 @@ def publish_course(course_id: int, db: Session = Depends(get_db), current_user: 
 def get_course_player(course_id: int, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
     course = db.query(models.Course).filter(models.Course.id == course_id).first()
     if not course: raise HTTPException(status_code=404)
+    
     enrollment = db.query(models.Enrollment).filter(models.Enrollment.user_id == current_user.id, models.Enrollment.course_id == course_id).first()
+    
     if not enrollment and current_user.role != "instructor": raise HTTPException(status_code=403)
+    
     if enrollment and enrollment.enrollment_type == "trial" and enrollment.expiry_date and datetime.utcnow() > enrollment.expiry_date:
         raise HTTPException(status_code=402, detail="Trial Expired")
-    return {"id": course.id, "title": course.title, "modules": [{"id": m.id, "title": m.title, "lessons": [{"id": c.id, "title": c.title, "type": c.type, "url": c.content} for c in m.items]} for m in course.modules]}
+    
+    # ✅ FIX: Added test_config, instructions, and other fields to the response
+    return {
+        "id": course.id, 
+        "title": course.title, 
+        "modules": [
+            {
+                "id": m.id, 
+                "title": m.title, 
+                "lessons": [
+                    {
+                        "id": c.id, 
+                        "title": c.title, 
+                        "type": c.type, 
+                        "url": c.content, 
+                        "test_config": c.test_config,   # <--- CRITICAL FIX FOR CODE ARENA
+                        "instructions": c.instructions, # <--- CRITICAL FIX FOR ASSIGNMENTS
+                        "duration": c.duration,
+                        "is_mandatory": c.is_mandatory
+                    } for c in m.items
+                ]
+            } for m in course.modules
+        ]
+    }
 
 @app.post("/api/v1/enroll/{course_id}")
 def enroll_student(course_id: int, req: EnrollmentRequest, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
