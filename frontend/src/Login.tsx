@@ -4,22 +4,22 @@ import axios from "axios";
 import { 
   User, Lock, Mail, ArrowRight, CheckCircle, 
   ShieldCheck, Eye, EyeOff, Facebook, Github, Linkedin, 
-  Smartphone, MessageSquare, AlertCircle, X // <--- Verified Import
+  Smartphone, MessageSquare, AlertCircle, X 
 } from "lucide-react";
 
 // 🔥 FIREBASE IMPORTS
 import { initializeApp } from "firebase/app";
 import { getAuth, RecaptchaVerifier, signInWithPhoneNumber } from "firebase/auth";
 
-// ⚙️ YOUR FIREBASE CONFIGURATION
+// ⚙️ FIREBASE CONFIGURATION (Loaded from .env)
 const firebaseConfig = {
-  apiKey: "AIzaSyDXMCCFrTxjwz7qb4JbfC3x-adc_QDWsOA",
-  authDomain: "iqmath-auth.firebaseapp.com",
-  projectId: "iqmath-auth",
-  storageBucket: "iqmath-auth.firebasestorage.app",
-  messagingSenderId: "493820113400",
-  appId: "1:493820113400:web:2f0660263a9cb8795da60d",
-  measurementId: "G-P2TS6H9MMZ"
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  appId: import.meta.env.VITE_FIREBASE_APP_ID,
+  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID
 };
 
 // Initialize Firebase
@@ -58,6 +58,9 @@ const Login = () => {
   const activeBg = isSignUp ? "bg-[#87C232]" : "bg-[#005EB8]";
   const activeText = isSignUp ? "text-[#87C232]" : "text-[#005EB8]";
 
+  // ✅ API URL FROM ENV
+  const API_URL = import.meta.env.VITE_API_URL;
+
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => { setFormData({ ...formData, [e.target.name]: e.target.value }); };
   const triggerToast = (message: string, type: "success" | "error" = "success") => { setToast({ show: true, message, type }); setTimeout(() => setToast((prev) => ({ ...prev, show: false })), 3000); };
 
@@ -83,7 +86,7 @@ const Login = () => {
     setLoading(true);
     onCaptchVerify();
     
-    // Auto-add +91 if user didn't type country code (Customize if needed)
+    // Auto-add +91 if user didn't type country code
     const phoneNumber = phone.startsWith("+") ? phone : "+91" + phone; 
     const appVerifier = (window as any).recaptchaVerifier;
 
@@ -122,12 +125,13 @@ const Login = () => {
   // 🔥 5. FINAL ACCOUNT CREATION (Backend Call)
   const finalizeSignup = async () => {
       try {
-        await axios.post("http://127.0.0.1:8000/api/v1/users", { 
+        // ✅ USE API_URL
+        await axios.post(`${API_URL}/users`, { 
             email: formData.email, 
             password: formData.password, 
             name: formData.name, 
             role: role,
-            phone_number: phone // Sending verified phone to backend
+            phone_number: phone 
         });
         triggerToast("Account created successfully! Please Sign In.", "success");
         
@@ -145,7 +149,7 @@ const Login = () => {
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    // --- 🟢 LOGIN FLOW (Unchanged) ---
+    // --- 🟢 LOGIN FLOW ---
     if (!isSignUp) {
         setLoading(true);
         try {
@@ -153,7 +157,8 @@ const Login = () => {
             loginParams.append("username", formData.email); 
             loginParams.append("password", formData.password);
             
-            const res = await axios.post("http://127.0.0.1:8000/api/v1/login", loginParams);
+            // ✅ USE API_URL
+            const res = await axios.post(`${API_URL}/login`, loginParams);
             
             if (res.data.role !== "student") { 
                 triggerToast("Please use the Admin Portal for Instructor access.", "error"); 
@@ -169,13 +174,11 @@ const Login = () => {
             setLoading(false); 
         }
     } 
-    // --- 🔵 SIGN UP FLOW (Intercepted by OTP) ---
+    // --- 🔵 SIGN UP FLOW ---
     else {
-        // If phone not verified yet, start OTP flow
         if (!isPhoneVerified) {
             onSignInSubmit(); 
         } else {
-            // Safety net, usually finalizeSignup is called directly after verification
             finalizeSignup();
         }
     }
@@ -183,7 +186,6 @@ const Login = () => {
 
   return (
     <div className="flex items-center justify-center min-h-screen bg-[#E2E8F0] font-sans p-4 overflow-hidden relative">
-      {/* Invisible Captcha Container for Firebase */}
       <div id="recaptcha-container"></div> 
       
       <button onClick={() => navigate("/admin-login")} className="absolute top-6 right-6 flex items-center gap-2 px-4 py-2 bg-white rounded-full shadow-md text-slate-600 hover:text-[#005EB8] hover:shadow-lg transition-all z-50 font-bold text-sm border border-slate-200">
@@ -317,7 +319,6 @@ const Login = () => {
 
       </div>
       
-      {/* Toast Notification */}
       {toast.show && (<div className="fixed top-5 right-5 z-50 bg-white px-6 py-4 rounded-xl shadow-2xl border-l-4 border-l-current flex items-center gap-3 animate-fade-in" style={{ borderColor: toast.type === "success" ? "#87C232" : "#ef4444" }}>{toast.type === "success" ? <CheckCircle className="text-[#87C232]" size={24} /> : <AlertCircle className="text-red-500" size={24} />}<div><h4 className="font-bold text-slate-800 text-sm">{toast.type === "success" ? "Success" : "Error"}</h4><p className="text-slate-500 text-xs">{toast.message}</p></div><button onClick={() => setToast({ ...toast, show: false })} className="ml-2 text-slate-400 hover:text-slate-600"><X size={16} /></button></div>)}
     </div>
   );

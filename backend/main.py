@@ -22,6 +22,8 @@ import requests
 import razorpay
 import google.generativeai as genai 
 import re  
+from dotenv import load_dotenv
+
 # --- 📄 PDF GENERATION IMPORTS ---
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import landscape, A4
@@ -36,6 +38,9 @@ from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseUpload
+
+# Load environment variables
+load_dotenv()
 
 # 1. Initialize Database Tables
 models.Base.metadata.create_all(bind=engine)
@@ -52,23 +57,23 @@ app.add_middleware(
 )
 
 # --- 🔐 SECURITY & AUTH CONFIG ---
-SECRET_KEY = "supersecretkey_change_this_in_production"
-ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 60 
+SECRET_KEY = os.getenv("SECRET_KEY", "fallback_secret")
+ALGORITHM = os.getenv("ALGORITHM", "HS256")
+ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", 60))
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/v1/login") 
 
 # --- 💳 RAZORPAY CONFIGURATION ---
-RAZORPAY_KEY_ID = "rzp_test_Ru8lDcv8KvAiC0" 
-RAZORPAY_KEY_SECRET = "puZLB2DQS8FmH0Z7SNrJtOBb"
+RAZORPAY_KEY_ID = os.getenv("RAZORPAY_KEY_ID")
+RAZORPAY_KEY_SECRET = os.getenv("RAZORPAY_KEY_SECRET")
 
 client = razorpay.Client(auth=(RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET))
 
-# --- ✨ GEMINI AI CONFIGURATION (REAL AI) ---
-GEMINI_API_KEY = "AIzaSyCjtXdB8ICkF9IB8mvTljDzjpQqNDFJTSk" 
+# --- ✨ GEMINI AI CONFIGURATION ---
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
 genai.configure(api_key=GEMINI_API_KEY)
-model = genai.GenerativeModel('gemini-2.5-flash')
+model = genai.GenerativeModel('gemini-1.5-flash')
 
 # --- 🗄️ DATABASE UTILITIES ---
 def get_db():
@@ -81,13 +86,6 @@ def get_db():
 # --- 📋 DATA MODELS ---
 class UserCreate(BaseModel):
     email: str; password: str; name: str; role: str; phone_number: str
-
-class UserCreate(BaseModel):
-    email: str
-    password: str
-    name: str
-    role: str
-    phone_number: str   
 
 class ModuleCreate(BaseModel):
     title: str; order: int
@@ -194,9 +192,8 @@ def generate_random_password(length=8):
 
 # ✅ FIXED: Email Sender
 def send_credentials_email(to_email: str, name: str, password: str):
-    # ⚠️ IMPORTANT: Use App Password, NOT Gmail password
-    sender_email = "nithishss48@gmail.com"  # REPLACE THIS
-    sender_password = "zzgh jbao mhvv qfxm"  # REPLACE THIS (16 chars)
+    sender_email = os.getenv("EMAIL_SENDER")
+    sender_password = os.getenv("EMAIL_PASSWORD")
     smtp_server = "smtp.gmail.com"
     smtp_port = 587
 
@@ -394,8 +391,8 @@ async def bulk_admit_students(file: UploadFile = File(...), course_id: int = For
 # --- CODE ARENA & OTHER ENDPOINTS (UNCHANGED) ---
 @app.post("/api/v1/ai/generate")
 async def generate_problem_content(req: AIGenerateRequest, db: Session = Depends(get_db)):
-    if not GEMINI_API_KEY or "PASTE_YOUR" in GEMINI_API_KEY:
-        print("❌ Error: API Key is missing or default.")
+    if not GEMINI_API_KEY:
+        print("❌ Error: API Key is missing.")
         raise HTTPException(status_code=500, detail="Gemini API Key not configured")
 
     try:
@@ -454,9 +451,13 @@ def create_code_test(test: CodeTestCreate, db: Session = Depends(get_db), curren
 
 @app.get("/api/v1/courses/{course_id}")
 def get_course_details(course_id: int, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
+    # 1. Fetch the course
     course = db.query(models.Course).filter(models.Course.id == course_id).first()
+    
+    # 2. Security check (Optional: Ensure only instructor or enrolled student can view)
     if not course:
         raise HTTPException(status_code=404, detail="Course not found")
+        
     return course
 
 @app.get("/api/v1/code-tests")
@@ -495,11 +496,16 @@ def get_test_results(test_id: int, db: Session = Depends(get_db), current_user: 
     results = db.query(models.TestResult).filter(models.TestResult.test_id == test_id).all()
     return [{"student_name": r.student.full_name, "email": r.student.email, "score": r.score, "problems_solved": r.problems_solved, "time_taken": r.time_taken, "submitted_at": r.submitted_at.strftime("%Y-%m-%d %H:%M")} for r in results]
 
+# ✅ UPDATE: USE KEYS FROM ENV FOR JUDGE0
 @app.post("/api/v1/execute")
 def execute_code(req: CodeExecutionRequest, db: Session = Depends(get_db)):
-    url = "https://judge0-ce.p.rapidapi.com/submissions?base64_encoded=false&wait=true"
+    url = f"https://{os.getenv('JUDGE0_API_HOST')}/submissions?base64_encoded=false&wait=true"
     payload = { "source_code": req.source_code, "language_id": 71, "stdin": req.stdin }
-    headers = { "content-type": "application/json", "X-RapidAPI-Key": "0708d014ebmsh3e0532f99384efbp139119jsn3736fb5bd1c2", "X-RapidAPI-Host": "judge0-ce.p.rapidapi.com" }
+    headers = { 
+        "content-type": "application/json", 
+        "X-RapidAPI-Key": os.getenv("JUDGE0_API_KEY"), 
+        "X-RapidAPI-Host": os.getenv("JUDGE0_API_HOST") 
+    }
     try:
         response = requests.post(url, json=payload, headers=headers)
         return response.json()
