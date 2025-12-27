@@ -65,7 +65,7 @@ RAZORPAY_KEY_SECRET = "puZLB2DQS8FmH0Z7SNrJtOBb"
 client = razorpay.Client(auth=(RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET))
 
 # --- ✨ GEMINI AI CONFIGURATION (REAL AI) ---
-GEMINI_API_KEY = "AIzaSyCUhFFvAAcHjvZfMqDCnt670QPR-0yMxps" 
+GEMINI_API_KEY = "AIzaSyCjtXdB8ICkF9IB8mvTljDzjpQqNDFJTSk" 
 
 genai.configure(api_key=GEMINI_API_KEY)
 model = genai.GenerativeModel('gemini-2.5-flash')
@@ -154,7 +154,15 @@ class LiveSessionRequest(BaseModel):
 
 class CourseCreate(BaseModel):
     title: str; description: str; price: int; image_url: Optional[str] = None
+    course_type: str = "standard" # Added
+    language: Optional[str] = None # Added
 
+class ChallengeCreate(BaseModel):
+    title: str
+    description: str
+    difficulty: str
+    test_cases: str # JSON string
+    
 # --- 🔑 AUTH LOGIC ---
 def verify_password(plain_password, hashed_password):
     if isinstance(hashed_password, str):
@@ -444,6 +452,13 @@ def create_code_test(test: CodeTestCreate, db: Session = Depends(get_db), curren
     db.commit()
     return {"message": "Test Created Successfully!"}
 
+@app.get("/api/v1/courses/{course_id}")
+def get_course_details(course_id: int, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
+    course = db.query(models.Course).filter(models.Course.id == course_id).first()
+    if not course:
+        raise HTTPException(status_code=404, detail="Course not found")
+    return course
+
 @app.get("/api/v1/code-tests")
 def get_code_tests(db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
     if current_user.role == "instructor": 
@@ -499,7 +514,16 @@ def get_courses(db: Session = Depends(get_db), current_user: models.User = Depen
 
 @app.post("/api/v1/courses")
 def create_course(course: CourseCreate, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
-    new_course = models.Course(**course.dict(), instructor_id=current_user.id)
+    # Logic to handle Course Type
+    new_course = models.Course(
+        title=course.title, 
+        description=course.description, 
+        price=course.price, 
+        image_url=course.image_url,
+        instructor_id=current_user.id,
+        course_type=course.course_type, # New
+        language=course.language # New
+    )
     db.add(new_course); db.commit(); db.refresh(new_course); return new_course
 
 @app.post("/api/v1/courses/{course_id}/modules")
@@ -537,6 +561,8 @@ def get_course_player(course_id: int, db: Session = Depends(get_db), current_use
     return {
         "id": course.id, 
         "title": course.title, 
+        "course_type": course.course_type, # <--- NEW LINE
+        "language": course.language,       # <--- NEW LINE
         "modules": [
             {
                 "id": m.id, 
@@ -762,5 +788,113 @@ def end_live_session(session_id: int, db: Session = Depends(get_db), current_use
         db.commit()
     return {"message": "Session ended"}
 
+@app.post("/api/v1/courses/{course_id}/challenges")
+def add_challenge(course_id: int, chal: ChallengeCreate, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
+    if current_user.role != "instructor": raise HTTPException(status_code=403)
+    
+    # Limit check: Max 20 per difficulty
+    count = db.query(models.CourseChallenge).filter(
+        models.CourseChallenge.course_id == course_id, 
+        models.CourseChallenge.difficulty == chal.difficulty
+    ).count()
+    
+    if count >= 20:
+        raise HTTPException(status_code=400, detail=f"Limit reached for {chal.difficulty} section (Max 20)")
+
+    new_chal = models.CourseChallenge(
+        course_id=course_id, title=chal.title, description=chal.description, 
+        difficulty=chal.difficulty, test_cases=chal.test_cases
+    )
+    db.add(new_chal); db.commit(); return {"message": "Challenge Added"}
+
+@app.get("/api/v1/courses/{course_id}/challenges")
+def get_challenges(course_id: int, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
+    # For Instructor: Return all raw data
+    # For Student: We also need to return "is_solved" status
+    challenges = db.query(models.CourseChallenge).filter(models.CourseChallenge.course_id == course_id).all()
+    
+    progress_map = {}
+    if current_user.role == "student":
+        progs = db.query(models.ChallengeProgress).filter(models.ChallengeProgress.user_id == current_user.id).all()
+        progress_map = {p.challenge_id: p.is_solved for p in progs}
+
+    return [{
+        "id": c.id, "title": c.title, "description": c.description, 
+        "difficulty": c.difficulty, "test_cases": c.test_cases,
+        "is_solved": progress_map.get(c.id, False)
+    } for c in challenges]
+
+@app.post("/api/v1/challenges/{challenge_id}/solve")
+def mark_challenge_solved(challenge_id: int, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
+    # This is called ONLY when the frontend Judge0 verifies all test cases passed
+    prog = db.query(models.ChallengeProgress).filter(
+        models.ChallengeProgress.user_id == current_user.id,
+        models.ChallengeProgress.challenge_id == challenge_id
+    ).first()
+    
+    if not prog:
+        prog = models.ChallengeProgress(user_id=current_user.id, challenge_id=challenge_id, is_solved=True)
+        db.add(prog)
+    else:
+        prog.is_solved = True
+        
+    db.commit()
+    return {"message": "Problem Solved!"}
+
+@app.post("/api/v1/ai/generate-challenge")
+async def generate_challenge_ai(req: AIGenerateRequest):
+    # 1. Reuse API Key Validation
+    if not GEMINI_API_KEY or "PASTE_YOUR" in GEMINI_API_KEY:
+        print("❌ Error: API Key is missing or default.")
+        raise HTTPException(status_code=500, detail="Gemini API Key not configured")
+
+    try:
+        # 2. NEW Prompt specifically for Coding Challenges
+        prompt = f"""
+        Act as a strict coding instructor.
+        Create a coding problem based on the topic: "{req.title}".
+
+        REQUIRED OUTPUT FORMAT (JSON ONLY):
+        {{
+            "description": "A clear, concise problem statement explaining what the code should do.",
+            "test_cases": [
+                {{"input": "example_input", "output": "expected_output", "hidden": false}},
+                {{"input": "test_input_2", "output": "test_output_2", "hidden": false}},
+                {{"input": "edge_case", "output": "edge_output", "hidden": true}}
+            ]
+        }}
+
+        Do NOT wrap in markdown code blocks. Return ONLY the raw JSON string.
+        """
+        
+        print(f"🤖 Sending Challenge request to Gemini for: {req.title}")
+        
+        # 3. Reuse Existing Execution & Parsing Logic
+        response = model.generate_content(prompt)
+        text = response.text.strip()
+        
+        # Extract JSON using Regex (Robust against markdown wrapping)
+        match = re.search(r'\{.*\}', text, re.DOTALL)
+        
+        if not match: 
+            raise ValueError("AI did not return valid JSON format.")
+            
+        clean_json = match.group()
+        ai_data = json.loads(clean_json)
+        
+        print("✅ AI Challenge Generation Successful!")
+        
+        # 4. Return formatted response (Matches frontend expectations)
+        return {
+            "description": ai_data.get("description", "No description generated."),
+            # We json.dumps the test_cases so they are sent as a string, 
+            # consistent with your existing data structure
+            "test_cases": json.dumps(ai_data.get("test_cases", [])) 
+        }
+
+    except Exception as e:
+        print(f"🔥 AI CHALLENGE GENERATION FAILED: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"AI Error: {str(e)}")
+    
 @app.get("/")
 def read_root(): return {"status": "online", "message": "iQmath API Active 🟢"}

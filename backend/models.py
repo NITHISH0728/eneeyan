@@ -27,10 +27,12 @@ class Course(Base):
     image_url = Column(String, nullable=True)
     is_published = Column(Boolean, default=False)
     instructor_id = Column(Integer, ForeignKey("users.id"))
-    
+    course_type = Column(String, default="standard") # 'standard' or 'coding'
+    language = Column(String, nullable=True) # e.g., 'python', 'javascript' (for compiler)
     modules = relationship("Module", back_populates="course")
     enrollments = relationship("Enrollment", back_populates="course")
-
+    challenges = relationship("CourseChallenge", back_populates="course")
+    
 class Module(Base):
     __tablename__ = "modules"
     id = Column(Integer, primary_key=True, index=True)
@@ -130,3 +132,27 @@ class LiveSession(Base):
     started_at = Column(DateTime, default=datetime.utcnow)
 
     instructor = relationship("User", back_populates="live_sessions")
+    
+class CourseChallenge(Base):
+    __tablename__ = "course_challenges"
+    id = Column(Integer, primary_key=True, index=True)
+    course_id = Column(Integer, ForeignKey("courses.id"))
+    title = Column(String)
+    description = Column(Text)
+    difficulty = Column(String) # "Easy", "Medium", "Hard"
+    test_cases = Column(Text) # JSON String: [{"input": "...", "output": "...", "hidden": false}]
+    function_name = Column(String, default="solution") # For function wrapping if needed
+    
+    course = relationship("Course", back_populates="challenges")
+    progress = relationship("ChallengeProgress", back_populates="challenge")
+
+class ChallengeProgress(Base):
+    __tablename__ = "challenge_progress"
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"))
+    challenge_id = Column(Integer, ForeignKey("course_challenges.id"))
+    is_solved = Column(Boolean, default=False)
+    solved_at = Column(DateTime, default=datetime.utcnow)
+    user_code = Column(Text, nullable=True) # Save their last successful code
+
+    challenge = relationship("CourseChallenge", back_populates="progress")    

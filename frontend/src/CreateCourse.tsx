@@ -6,12 +6,16 @@ import { Save, Image as ImageIcon, IndianRupee, ArrowLeft, Clock } from "lucide-
 const CreateCourse = () => {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
-  const [formData, setFormData] = useState({ title: "", description: "", price: "", image_url: "", duration: "" });
+  const [formData, setFormData] = useState({ 
+    title: "", description: "", price: "", image_url: "", duration: "", 
+    course_type: "standard", language: "python" // NEW FIELDS
+  });
   const [isFree, setIsFree] = useState(false);
 
   // 🎨 PROFESSIONAL THEME
   const brand = {
     blue: "#005EB8",
+    green: "#10b981",
     border: "#e2e8f0",
     textLabel: "#475569",
     inputBg: "#ffffff", // White input on off-white card
@@ -21,10 +25,19 @@ const CreateCourse = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault(); setLoading(true);
+    const token = localStorage.getItem("token");
+    const finalDescription = formData.duration ? `${formData.description}\n\n[Duration: ${formData.duration}]` : formData.description;
+    const payload = {
+        title: formData.title,
+        description: finalDescription,
+        price: isFree ? 0 : parseInt(formData.price),
+        image_url: formData.image_url,
+        course_type: formData.course_type, // Send type
+        language: formData.course_type === "coding" ? formData.language : null // Send language
+    };
     try {
-      const token = localStorage.getItem("token");
-      const finalDescription = formData.duration ? `${formData.description}\n\n[Duration: ${formData.duration}]` : formData.description;
-      const response = await axios.post("http://127.0.0.1:8000/api/v1/courses", { title: formData.title, description: finalDescription, price: isFree ? 0 : parseInt(formData.price), image_url: formData.image_url }, { headers: { Authorization: `Bearer ${token}` } });
+    // ✅ CORRECT: Use the 'payload' variable you created
+const response = await axios.post("http://127.0.0.1:8000/api/v1/courses", payload, { headers: { Authorization: `Bearer ${token}` } });
       alert("Course Created Successfully! 🎉 Let's add some content.");
       navigate(`/dashboard/course/${response.data.id}/builder`);
     } catch (error: any) { console.error(error); alert("Failed to create course."); } finally { setLoading(false); }
@@ -47,7 +60,42 @@ const CreateCourse = () => {
       {/* Main Form Card (Off-White) */}
       <div style={{ background: brand.cardBg, padding: "40px", borderRadius: "16px", border: `1px solid ${brand.border}`, boxShadow: "0 10px 30px -10px rgba(0, 0, 0, 0.05)" }}>
         <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "28px" }}>
-          
+         // 2. Add this UI block ABOVE the "Course Title" input
+<div style={{ marginBottom: "24px", padding: "20px", background: "#f1f5f9", borderRadius: "12px" }}>
+    <label style={labelStyle}>Select Course Type</label>
+    <div style={{ display: "flex", gap: "20px", marginTop: "10px" }}>
+        <div onClick={() => setFormData({...formData, course_type: "standard"})} 
+             style={{ flex: 1, padding: "15px", background: formData.course_type === "standard" ? "white" : "transparent", border: formData.course_type === "standard" ? `2px solid ${brand.blue}` : "1px solid #cbd5e1", borderRadius: "10px", cursor: "pointer", display: "flex", alignItems: "center", gap: "10px" }}>
+             <div style={{ width: "20px", height: "20px", borderRadius: "50%", border: "2px solid #cbd5e1", background: formData.course_type === "standard" ? brand.blue : "transparent" }} />
+             <div>
+                 <div style={{ fontWeight: "700", color: brand.textMain }}>Standard Course</div>
+                 <div style={{ fontSize: "12px", color: brand.textLabel }}>Video, PDF, Quizzes & Assignments</div>
+             </div>
+        </div>
+
+        <div onClick={() => setFormData({...formData, course_type: "coding"})} 
+             style={{ flex: 1, padding: "15px", background: formData.course_type === "coding" ? "white" : "transparent", border: formData.course_type === "coding" ? `2px solid ${brand.green}` : "1px solid #cbd5e1", borderRadius: "10px", cursor: "pointer", display: "flex", alignItems: "center", gap: "10px" }}>
+             <div style={{ width: "20px", height: "20px", borderRadius: "50%", border: "2px solid #cbd5e1", background: formData.course_type === "coding" ? brand.green : "transparent" }} />
+             <div>
+                 <div style={{ fontWeight: "700", color: brand.textMain }}>Coding Course</div>
+                 <div style={{ fontSize: "12px", color: brand.textLabel }}>Practice Problems with Compiler</div>
+             </div>
+        </div>
+    </div>
+
+    {/* SHOW LANGUAGE ONLY IF CODING COURSE */}
+    {formData.course_type === "coding" && (
+        <div style={{ marginTop: "20px", animation: "fadeIn 0.3s" }}>
+            <label style={labelStyle}>Programming Language</label>
+            <select value={formData.language} onChange={(e) => setFormData({...formData, language: e.target.value})} style={inputStyle}>
+                <option value="python">Python (3.8.1)</option>
+                <option value="java">Java (OpenJDK 13)</option>
+                <option value="cpp">C++ (GCC 9.2)</option>
+                <option value="javascript">JavaScript (Node.js)</option>
+            </select>
+        </div>
+    )}
+</div> 
           <div>
             <label style={labelStyle}>Course Title</label>
             <input type="text" placeholder="e.g. Advanced Java Masterclass" value={formData.title} onChange={(e) => setFormData({...formData, title: e.target.value})} required style={inputStyle} />
