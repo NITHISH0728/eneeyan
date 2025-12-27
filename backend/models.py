@@ -7,14 +7,17 @@ class User(Base):
     __tablename__ = "users"
     id = Column(Integer, primary_key=True, index=True)
     email = Column(String, unique=True, index=True)
+    phone_number = Column(String, nullable=True) # <--- ADD THIS LINE
     full_name = Column(String)
     hashed_password = Column(String)
     role = Column(String) 
     
+    # ... rest of the relationships remain exactly the same ...
     enrollments = relationship("Enrollment", back_populates="student")
     submissions = relationship("Submission", back_populates="student")
     test_results = relationship("TestResult", back_populates="student")
-
+    
+    live_sessions = relationship("LiveSession", back_populates="instructor")
 class Course(Base):
     __tablename__ = "courses"
     id = Column(Integer, primary_key=True, index=True)
@@ -79,7 +82,7 @@ class Submission(Base):
     student = relationship("User", back_populates="submissions")
     assignment = relationship("ContentItem")
 
-# ✅ NEW: CODE ARENA MODELS
+# --- CODE ARENA MODELS ---
 class CodeTest(Base):
     __tablename__ = "code_tests"
     id = Column(Integer, primary_key=True, index=True)
@@ -115,3 +118,15 @@ class TestResult(Base):
     
     student = relationship("User", back_populates="test_results")
     test = relationship("CodeTest", back_populates="results")
+
+# ✅ NEW: LIVE SESSION MODEL
+class LiveSession(Base):
+    __tablename__ = "live_sessions"
+    id = Column(Integer, primary_key=True, index=True)
+    instructor_id = Column(Integer, ForeignKey("users.id"))
+    youtube_url = Column(String)
+    topic = Column(String)
+    is_active = Column(Boolean, default=True)
+    started_at = Column(DateTime, default=datetime.utcnow)
+
+    instructor = relationship("User", back_populates="live_sessions")

@@ -8,7 +8,7 @@ import "plyr/dist/plyr.css";
 import { 
   PlayCircle, FileText, ChevronLeft, Menu, Code, HelpCircle, 
   UploadCloud, Play, Save, Monitor, Cpu, ChevronDown, ChevronRight, CreditCard,
-  File as FileIcon, X, CheckCircle
+  File as FileIcon, X, CheckCircle, Radio
 } from "lucide-react";
 
 // --- 💻 COMPONENT: PROFESSIONAL CODE ARENA (MULTI-PROBLEM SUPPORT) ---
@@ -258,7 +258,7 @@ const CoursePlayer = () => {
         );
     }
 
-    // 🎥 3. VIDEO
+    // 🎥 3. VIDEO OR LIVE CLASS (Unified)
     if (activeLesson.type === "video" || activeLesson.type === "live_class") {
         const videoId = getYoutubeId(activeLesson.url);
         if (!videoId) return <div style={{color: "white", padding: "40px"}}>Invalid Video URL</div>;
@@ -352,6 +352,7 @@ const CoursePlayer = () => {
                               {lesson.type === "quiz" && <HelpCircle size={16} />} 
                               {lesson.type.includes("code") && <Code size={16} />}
                               {lesson.type === "assignment" && <UploadCloud size={16} />}
+                              {lesson.type === "live_class" && <Radio size={16} className={isActive ? "text-red-600" : "text-slate-400"} />}
                             </div>
                             <div className={`text-sm flex-1 ${isActive ? "text-blue-600 font-semibold" : "text-slate-600"}`}>{lesson.title}</div>
                           </div>

@@ -80,10 +80,14 @@ def get_db():
 
 # --- 📋 DATA MODELS ---
 class UserCreate(BaseModel):
-    email: str; password: str; name: str; role: str
+    email: str; password: str; name: str; role: str; phone_number: str
 
-class CourseCreate(BaseModel):
-    title: str; description: str; price: int; image_url: Optional[str] = None
+class UserCreate(BaseModel):
+    email: str
+    password: str
+    name: str
+    role: str
+    phone_number: str   
 
 class ModuleCreate(BaseModel):
     title: str; order: int
@@ -101,7 +105,6 @@ class Token(BaseModel):
 class AssignmentSubmission(BaseModel):
     link: str; lesson_id: int
 
-# ✅ Updated to accept password from frontend
 class AdmitStudentRequest(BaseModel):
     full_name: str
     email: str
@@ -143,6 +146,14 @@ class CodeExecutionRequest(BaseModel):
 
 class AIGenerateRequest(BaseModel):
     title: str
+
+# ✅ NEW: Live Session Model
+class LiveSessionRequest(BaseModel):
+    youtube_url: str
+    topic: str
+
+class CourseCreate(BaseModel):
+    title: str; description: str; price: int; image_url: Optional[str] = None
 
 # --- 🔑 AUTH LOGIC ---
 def verify_password(plain_password, hashed_password):
@@ -290,8 +301,17 @@ def create_certificate_pdf(student_name: str, course_name: str, date_str: str):
 def create_user(user: UserCreate, db: Session = Depends(get_db)):
     if db.query(models.User).filter(models.User.email == user.email).first():
         raise HTTPException(status_code=400, detail="Email already registered")
-    new_user = models.User(email=user.email, hashed_password=get_password_hash(user.password), full_name=user.name, role=user.role)
-    db.add(new_user); db.commit()
+    
+    # ✅ Save phone number here
+    new_user = models.User(
+        email=user.email, 
+        hashed_password=get_password_hash(user.password), 
+        full_name=user.name, 
+        role=user.role,
+        phone_number=user.phone_number # <--- ADD THIS
+    )
+    db.add(new_user)
+    db.commit()
     return {"message": "User created successfully"}
 
 @app.post("/api/v1/login", response_model=Token)
@@ -709,6 +729,38 @@ def delete_course(course_id: int, db: Session = Depends(get_db), current_user: m
     db.commit()
     
     return {"message": "Course deleted successfully"}
+
+# ✅ NEW ENDPOINTS FOR LIVE SESSIONS
+@app.post("/api/v1/live/start")
+def start_live_session(req: LiveSessionRequest, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
+    if current_user.role != "instructor": raise HTTPException(status_code=403)
+    
+    # Deactivate old sessions for this instructor
+    old_sessions = db.query(models.LiveSession).filter(models.LiveSession.instructor_id == current_user.id, models.LiveSession.is_active == True).all()
+    for s in old_sessions:
+        s.is_active = False
+    
+    new_session = models.LiveSession(
+        instructor_id=current_user.id,
+        youtube_url=req.youtube_url,
+        topic=req.topic,
+        is_active=True
+    )
+    db.add(new_session); db.commit(); db.refresh(new_session)
+    return {"message": "Live session started", "session_id": new_session.id}
+
+@app.get("/api/v1/live/active")
+def get_active_live_sessions(db: Session = Depends(get_db)):
+    return db.query(models.LiveSession).filter(models.LiveSession.is_active == True).all()
+
+@app.post("/api/v1/live/end/{session_id}")
+def end_live_session(session_id: int, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
+    if current_user.role != "instructor": raise HTTPException(status_code=403)
+    session = db.query(models.LiveSession).filter(models.LiveSession.id == session_id).first()
+    if session:
+        session.is_active = False
+        db.commit()
+    return {"message": "Session ended"}
 
 @app.get("/")
 def read_root(): return {"status": "online", "message": "iQmath API Active 🟢"}

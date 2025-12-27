@@ -1,28 +1,53 @@
 import requests
 
-# API URL
-url = "http://127.0.0.1:8000/api/v1/users"
+# ✅ POINT TO YOUR API
+API_URL = "http://127.0.0.1:8000/api/v1/users"
 
-def create_account(email, password, name, role):
-    payload = {
-        "email": email,
-        "password": password,
-        "name": name,
-        "role": role
+def seed_users():
+    # 1. Define Instructor Data (Added phone_number)
+    instructor = {
+        "email": "instructor@iqmath.com",
+        "password": "password123",
+        "name": "Master Instructor",
+        "role": "instructor",
+        "phone_number": "9876543210" # <--- REQUIRED NOW
     }
+
+    # 2. Define Student Data (Added phone_number)
+    student = {
+        "email": "student@iqmath.com",
+        "password": "password123",
+        "name": "Test Student",
+        "role": "student",
+        "phone_number": "9123456789" # <--- REQUIRED NOW
+    }
+
+    # 3. Send Requests
+    print("🌱 Seeding Database...")
+
+    # Create Instructor
     try:
-        response = requests.post(url, json=payload)
-        if response.status_code == 201:
-            print(f"✅ SUCCESS: {role.capitalize()} created! ({email})")
-        elif response.status_code == 400:
-            print(f"⚠️  {role.capitalize()} already exists.")
+        res = requests.post(API_URL, json=instructor)
+        if res.status_code == 201:
+            print("✅ Instructor Created: instructor@iqmath.com / securepassword")
+        elif res.status_code == 400:
+            print("⚠️ Instructor already exists.")
         else:
-            print(f"❌ Failed to create {role}: {response.status_code}")
+            print(f"❌ Failed to create instructor: {res.status_code} - {res.text}")
     except Exception as e:
         print(f"❌ Connection Error: {e}")
 
-# 1. Create Instructor
-create_account("instructor@iqmath.com", "password123", "Head Instructor", "instructor")
+    # Create Student
+    try:
+        res = requests.post(API_URL, json=student)
+        if res.status_code == 201:
+            print("✅ Student Created: student@iqmath.com / securepassword")
+        elif res.status_code == 400:
+            print("⚠️ Student already exists.")
+        else:
+            print(f"❌ Failed to create student: {res.status_code} - {res.text}")
+    except Exception as e:
+        print(f"❌ Connection Error: {e}")
 
-# 2. Create Student
-create_account("student@iqmath.com", "password123", "Student One", "student")
+if __name__ == "__main__":
+    seed_users()

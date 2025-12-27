@@ -3,8 +3,28 @@ import { useNavigate } from "react-router-dom";
 import axios from "axios";
 import { 
   User, Lock, Mail, ArrowRight, CheckCircle, 
-  ShieldCheck, Eye, EyeOff, Facebook, Github, Linkedin, AlertCircle, X
+  ShieldCheck, Eye, EyeOff, Facebook, Github, Linkedin, 
+  Smartphone, MessageSquare, AlertCircle, X // <--- Verified Import
 } from "lucide-react";
+
+// 🔥 FIREBASE IMPORTS
+import { initializeApp } from "firebase/app";
+import { getAuth, RecaptchaVerifier, signInWithPhoneNumber } from "firebase/auth";
+
+// ⚙️ YOUR FIREBASE CONFIGURATION
+const firebaseConfig = {
+  apiKey: "AIzaSyDXMCCFrTxjwz7qb4JbfC3x-adc_QDWsOA",
+  authDomain: "iqmath-auth.firebaseapp.com",
+  projectId: "iqmath-auth",
+  storageBucket: "iqmath-auth.firebasestorage.app",
+  messagingSenderId: "493820113400",
+  appId: "1:493820113400:web:2f0660263a9cb8795da60d",
+  measurementId: "G-P2TS6H9MMZ"
+};
+
+// Initialize Firebase
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
 
 // Google Icon Component
 const GoogleIcon = () => (
@@ -25,6 +45,14 @@ const Login = () => {
   const [loading, setLoading] = useState(false);
   const [toast, setToast] = useState<ToastState>({ show: false, message: "", type: "success" });
   const [showPassword, setShowPassword] = useState(false);
+  
+  // ✅ NEW STATES FOR OTP FLOW
+  const [phone, setPhone] = useState("");
+  const [otp, setOtp] = useState("");
+  const [showOtpInput, setShowOtpInput] = useState(false);
+  const [isPhoneVerified, setIsPhoneVerified] = useState(false);
+  const [confirmationResult, setConfirmationResult] = useState<any>(null);
+
   const [formData, setFormData] = useState({ email: "", password: "", name: "" });
 
   const activeBg = isSignUp ? "bg-[#87C232]" : "bg-[#005EB8]";
@@ -33,31 +61,140 @@ const Login = () => {
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => { setFormData({ ...formData, [e.target.name]: e.target.value }); };
   const triggerToast = (message: string, type: "success" | "error" = "success") => { setToast({ show: true, message, type }); setTimeout(() => setToast((prev) => ({ ...prev, show: false })), 3000); };
 
+  // 🔥 1. CAPTCHA SETUP (Invisible)
+  const onCaptchVerify = () => {
+    if (!(window as any).recaptchaVerifier) {
+        (window as any).recaptchaVerifier = new RecaptchaVerifier(auth, 'recaptcha-container', {
+            'size': 'invisible',
+            'callback': () => {
+                // Captcha solved - handled automatically
+            },
+            'expired-callback': () => {
+                triggerToast("Captcha Expired. Refresh page.", "error");
+            }
+        });
+    }
+  };
+
+  // 🔥 2. SEND OTP LOGIC
+  const onSignInSubmit = () => {
+    if (!phone || phone.length < 10) return triggerToast("Please enter a valid phone number", "error");
+    
+    setLoading(true);
+    onCaptchVerify();
+    
+    // Auto-add +91 if user didn't type country code (Customize if needed)
+    const phoneNumber = phone.startsWith("+") ? phone : "+91" + phone; 
+    const appVerifier = (window as any).recaptchaVerifier;
+
+    signInWithPhoneNumber(auth, phoneNumber, appVerifier)
+    .then((confirmationResult) => {
+      (window as any).confirmationResult = confirmationResult;
+      setConfirmationResult(confirmationResult);
+      setLoading(false);
+      setShowOtpInput(true); // Switch to OTP View
+      triggerToast("OTP Sent Successfully! Check your phone.", "success");
+    }).catch((error) => {
+      console.error(error);
+      setLoading(false);
+      triggerToast("Failed to send OTP. Try again later.", "error");
+    });
+  };
+
+  // 🔥 3. VERIFY OTP LOGIC
+  const verifyOtp = () => {
+    if(!otp) return;
+    setLoading(true);
+    confirmationResult.confirm(otp).then(async (result: any) => {
+        setIsPhoneVerified(true);
+        setLoading(false);
+        triggerToast("Phone Verified! Creating Account...", "success");
+        
+        // 🔥 4. IF VERIFIED, CREATE ACCOUNT
+        await finalizeSignup();
+
+    }).catch((error: any) => {
+        setLoading(false);
+        triggerToast("Invalid OTP. Please try again.", "error");
+    });
+  };
+
+  // 🔥 5. FINAL ACCOUNT CREATION (Backend Call)
+  const finalizeSignup = async () => {
+      try {
+        await axios.post("http://127.0.0.1:8000/api/v1/users", { 
+            email: formData.email, 
+            password: formData.password, 
+            name: formData.name, 
+            role: role,
+            phone_number: phone // Sending verified phone to backend
+        });
+        triggerToast("Account created successfully! Please Sign In.", "success");
+        
+        // Reset Everything & Go to Login View
+        setIsSignUp(false);
+        setShowOtpInput(false);
+        setIsPhoneVerified(false);
+        setOtp("");
+        setPhone("");
+      } catch (err) {
+        triggerToast("Database Error. This Email might already exist.", "error");
+      }
+  };
+
   const handleAuth = async (e: React.FormEvent) => {
-    e.preventDefault(); setLoading(true);
-    try {
-        if (!isSignUp) {
-            const loginParams = new URLSearchParams(); loginParams.append("username", formData.email); loginParams.append("password", formData.password);
+    e.preventDefault();
+    
+    // --- 🟢 LOGIN FLOW (Unchanged) ---
+    if (!isSignUp) {
+        setLoading(true);
+        try {
+            const loginParams = new URLSearchParams(); 
+            loginParams.append("username", formData.email); 
+            loginParams.append("password", formData.password);
+            
             const res = await axios.post("http://127.0.0.1:8000/api/v1/login", loginParams);
-            if (res.data.role !== "student") { triggerToast("Please use the Admin Portal for Instructor access.", "error"); setLoading(false); return; }
-            localStorage.setItem("token", res.data.access_token); localStorage.setItem("role", res.data.role);
-            triggerToast("Login Successful! Redirecting...", "success"); setTimeout(() => navigate("/student-dashboard"), 1000);
-        } else {
-            await axios.post("http://127.0.0.1:8000/api/v1/users", { email: formData.email, password: formData.password, name: formData.name, role: role });
-            triggerToast("Account created! Please Sign In.", "success"); setIsSignUp(false);
+            
+            if (res.data.role !== "student") { 
+                triggerToast("Please use the Admin Portal for Instructor access.", "error"); 
+                setLoading(false); 
+                return; 
+            }
+            localStorage.setItem("token", res.data.access_token); 
+            localStorage.setItem("role", res.data.role);
+            triggerToast("Login Successful! Redirecting...", "success"); 
+            setTimeout(() => navigate("/student-dashboard"), 1000);
+        } catch (err: any) { 
+            triggerToast("Authentication failed. Check credentials.", "error"); 
+            setLoading(false); 
         }
-    } catch (err: any) { triggerToast("Authentication failed. Check credentials.", "error"); } finally { setLoading(false); }
+    } 
+    // --- 🔵 SIGN UP FLOW (Intercepted by OTP) ---
+    else {
+        // If phone not verified yet, start OTP flow
+        if (!isPhoneVerified) {
+            onSignInSubmit(); 
+        } else {
+            // Safety net, usually finalizeSignup is called directly after verification
+            finalizeSignup();
+        }
+    }
   };
 
   return (
     <div className="flex items-center justify-center min-h-screen bg-[#E2E8F0] font-sans p-4 overflow-hidden relative">
+      {/* Invisible Captcha Container for Firebase */}
+      <div id="recaptcha-container"></div> 
+      
       <button onClick={() => navigate("/admin-login")} className="absolute top-6 right-6 flex items-center gap-2 px-4 py-2 bg-white rounded-full shadow-md text-slate-600 hover:text-[#005EB8] hover:shadow-lg transition-all z-50 font-bold text-sm border border-slate-200">
         <ShieldCheck size={18} /> Admin Access
       </button>
 
       <div className="relative bg-[#F8FAFC] rounded-[20px] shadow-2xl overflow-hidden w-full max-w-[1000px] min-h-[600px] flex border border-slate-200">
         
-        {/* SIGN IN FORM */}
+        {/* ======================= */}
+        {/* 🔑 SIGN IN FORM (LEFT)  */}
+        {/* ======================= */}
         <div className={`absolute top-0 h-full transition-all duration-700 ease-in-out left-0 w-1/2 z-20 ${isSignUp ? 'translate-x-full opacity-0 pointer-events-none' : 'opacity-100'}`}>
           <form onSubmit={handleAuth} className="bg-[#F8FAFC] flex flex-col items-center justify-center h-full px-12 text-center">
             <div className="mb-4"><h1 className={`text-3xl font-extrabold ${activeText} tracking-tight`}>iQmath</h1></div>
@@ -92,60 +229,95 @@ const Login = () => {
           </form>
         </div>
 
-        {/* SIGN UP FORM */}
+        {/* ============================ */}
+        {/* 📝 SIGN UP FORM (RIGHT)      */}
+        {/* ============================ */}
         <div className={`absolute top-0 h-full transition-all duration-700 ease-in-out left-0 w-1/2 z-10 ${isSignUp ? 'translate-x-full opacity-100 z-30' : 'opacity-0 pointer-events-none'}`}>
-          <form onSubmit={handleAuth} className="bg-[#F8FAFC] flex flex-col items-center justify-center h-full px-12 text-center">
-            <h1 className={`text-3xl font-bold mb-2 ${activeText}`}>Create Account</h1>
-            <p className="text-slate-400 text-sm mb-6">Join iQmath as a new student</p>
+          
+          {/* STATE A: DETAILS FORM (Before OTP) */}
+          {!showOtpInput ? (
+              <form onSubmit={handleAuth} className="bg-[#F8FAFC] flex flex-col items-center justify-center h-full px-12 text-center">
+                <h1 className={`text-3xl font-bold mb-2 ${activeText}`}>Create Account</h1>
+                <p className="text-slate-400 text-sm mb-6">Enter details to verify & join</p>
 
-            <div className="flex gap-4 mb-6 w-full justify-center">
-                <button type="button" className="p-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 transition-all shadow-sm"><GoogleIcon /></button>
-                <button type="button" className="p-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 transition-all shadow-sm text-[#1877F2]"><Facebook size={20} fill="currentColor" strokeWidth={0} /></button>
-                <button type="button" className="p-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 transition-all shadow-sm text-slate-800"><Github size={20} /></button>
-                <button type="button" className="p-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 transition-all shadow-sm text-[#0A66C2]"><Linkedin size={20} fill="currentColor" strokeWidth={0} /></button>
-            </div>
-
-            <div className="flex items-center w-full mb-6">
-                <div className="h-px bg-slate-200 flex-1"></div><span className="px-3 text-xs text-slate-400 font-medium">OR USE EMAIL</span><div className="h-px bg-slate-200 flex-1"></div>
-            </div>
-
-            <div className="w-full max-w-[350px] space-y-4">
-                <div className="flex items-center bg-white rounded-lg px-4 py-3 border border-slate-200 focus-within:ring-2 focus-within:ring-[#87C232] shadow-sm">
-                    <User className="text-slate-400 mr-3 shrink-0" size={20} strokeWidth={1.5} />
-                    <input type="text" name="name" placeholder="Full Name" required className="bg-transparent outline-none flex-1 text-sm font-medium text-slate-700 placeholder-slate-400" onChange={handleInputChange} />
+                <div className="w-full max-w-[350px] space-y-4">
+                    <div className="flex items-center bg-white rounded-lg px-4 py-3 border border-slate-200 focus-within:ring-2 focus-within:ring-[#87C232] shadow-sm">
+                        <User className="text-slate-400 mr-3 shrink-0" size={20} strokeWidth={1.5} />
+                        <input type="text" name="name" placeholder="Full Name" required className="bg-transparent outline-none flex-1 text-sm font-medium text-slate-700 placeholder-slate-400" onChange={handleInputChange} />
+                    </div>
+                    <div className="flex items-center bg-white rounded-lg px-4 py-3 border border-slate-200 focus-within:ring-2 focus-within:ring-[#87C232] shadow-sm">
+                        <Mail className="text-slate-400 mr-3 shrink-0" size={20} strokeWidth={1.5} />
+                        <input type="email" name="email" placeholder="Email Address" required className="bg-transparent outline-none flex-1 text-sm font-medium text-slate-700 placeholder-slate-400" onChange={handleInputChange} />
+                    </div>
+                    <div className="flex items-center bg-white rounded-lg px-4 py-3 border border-slate-200 focus-within:ring-2 focus-within:ring-[#87C232] shadow-sm">
+                        <Lock className="text-slate-400 mr-3 shrink-0" size={20} strokeWidth={1.5} />
+                        <input type={showPassword ? "text" : "password"} name="password" placeholder="Create Password" required className="bg-transparent outline-none flex-1 text-sm font-medium text-slate-700 placeholder-slate-400" onChange={handleInputChange} />
+                    </div>
+                    {/* 📱 PHONE INPUT FOR OTP */}
+                    <div className="flex items-center bg-white rounded-lg px-4 py-3 border border-slate-200 focus-within:ring-2 focus-within:ring-[#87C232] shadow-sm">
+                        <Smartphone className="text-slate-400 mr-3 shrink-0" size={20} strokeWidth={1.5} />
+                        <input type="tel" value={phone} placeholder="Phone (e.g. 9999999999)" required className="bg-transparent outline-none flex-1 text-sm font-medium text-slate-700 placeholder-slate-400" onChange={(e) => setPhone(e.target.value)} />
+                    </div>
                 </div>
-                <div className="flex items-center bg-white rounded-lg px-4 py-3 border border-slate-200 focus-within:ring-2 focus-within:ring-[#87C232] shadow-sm">
-                    <Mail className="text-slate-400 mr-3 shrink-0" size={20} strokeWidth={1.5} />
-                    <input type="email" name="email" placeholder="Email Address" required className="bg-transparent outline-none flex-1 text-sm font-medium text-slate-700 placeholder-slate-400" onChange={handleInputChange} />
-                </div>
-                <div className="flex items-center bg-white rounded-lg px-4 py-3 border border-slate-200 focus-within:ring-2 focus-within:ring-[#87C232] shadow-sm">
-                    <Lock className="text-slate-400 mr-3 shrink-0" size={20} strokeWidth={1.5} />
-                    <input type={showPassword ? "text" : "password"} name="password" placeholder="Create Password" required className="bg-transparent outline-none flex-1 text-sm font-medium text-slate-700 placeholder-slate-400" onChange={handleInputChange} />
-                    <button type="button" onClick={() => setShowPassword(!showPassword)} className="text-slate-400 hover:text-slate-600 focus:outline-none ml-2 shrink-0">{showPassword ? <EyeOff size={20} /> : <Eye size={20} />}</button>
-                </div>
-            </div>
 
-            <button type="submit" className={`mt-8 w-full max-w-[350px] py-3.5 rounded-xl font-bold text-white shadow-lg transition-all transform active:scale-95 flex items-center justify-center gap-2 ${activeBg} hover:opacity-90`}><CheckCircle size={18} /> Sign Up</button>
-          </form>
+                <button type="submit" className={`mt-8 w-full max-w-[350px] py-3.5 rounded-xl font-bold text-white shadow-lg transition-all transform active:scale-95 flex items-center justify-center gap-2 ${activeBg} hover:opacity-90`}>
+                    {loading ? "Sending OTP..." : "Get OTP & Sign Up"} <CheckCircle size={18} />
+                </button>
+              </form>
+          ) : (
+              /* STATE B: OTP VERIFICATION FORM */
+              <div className="bg-[#F8FAFC] flex flex-col items-center justify-center h-full px-12 text-center w-full animate-fade-in">
+                  <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mb-4">
+                      <MessageSquare className="text-[#87C232]" size={32} />
+                  </div>
+                  <h2 className="text-2xl font-bold text-slate-800 mb-2">Verify OTP</h2>
+                  <p className="text-slate-500 text-sm mb-6">Enter the 6-digit code sent to {phone}</p>
+                  
+                  <div className="w-full max-w-[250px] mb-6">
+                      <input 
+                        type="text" 
+                        value={otp}
+                        onChange={(e) => setOtp(e.target.value)}
+                        placeholder="123456" 
+                        maxLength={6}
+                        className="w-full text-center text-3xl font-bold tracking-widest py-3 border-b-2 border-slate-300 focus:border-[#87C232] outline-none bg-transparent"
+                      />
+                  </div>
+
+                  <button onClick={verifyOtp} disabled={loading} className={`w-full max-w-[250px] py-3.5 rounded-xl font-bold text-white shadow-lg transition-all transform active:scale-95 flex items-center justify-center gap-2 ${activeBg} hover:opacity-90`}>
+                      {loading ? "Verifying..." : "Verify & Create"}
+                  </button>
+                  <button onClick={() => setShowOtpInput(false)} className="mt-4 text-xs text-slate-400 font-bold hover:underline">Change Number</button>
+              </div>
+          )}
         </div>
 
-        {/* SLIDING OVERLAY */}
+        {/* ============================ */}
+        {/* 🎭 SLIDING OVERLAY PANEL     */}
+        {/* ============================ */}
         <div className={`absolute top-0 left-1/2 w-1/2 h-full overflow-hidden transition-transform duration-700 ease-in-out z-40 ${isSignUp ? '-translate-x-full rounded-r-[20px] rounded-l-[100px]' : 'rounded-l-[20px] rounded-r-[100px]'}`}>
           <div className={`relative -left-full h-full w-[200%] transition-transform duration-700 ease-in-out ${activeBg} text-white ${isSignUp ? 'translate-x-1/2' : 'translate-x-0'}`}>
+            
+            {/* OVERLAY: RIGHT (Prompts Sign Up) */}
             <div className={`absolute top-0 right-0 w-1/2 h-full flex flex-col items-center justify-center px-12 text-center transition-transform duration-700 ease-in-out ${isSignUp ? 'translate-x-[20%]' : 'translate-x-0'}`}>
               <h1 className="text-4xl font-extrabold mb-4 leading-tight">Learn Without <br/>Limits.</h1>
-              <p className="text-sm font-medium mb-8 italic opacity-90 max-w-[320px]">“Education is the passport to the future...”</p>
+              <p className="text-sm font-medium mb-8 italic opacity-90 max-w-[320px]">“Education is the passport to the future, for tomorrow belongs to those who prepare for it today.”</p>
               <button onClick={() => setIsSignUp(true)} className="px-8 py-3 bg-transparent border-2 border-white rounded-xl font-bold text-sm tracking-wide hover:bg-white hover:text-slate-900 transition-all active:scale-95">Create Account</button>
             </div>
+
+            {/* OVERLAY: LEFT (Prompts Sign In) */}
             <div className={`absolute top-0 left-0 w-1/2 h-full flex flex-col items-center justify-center px-12 text-center transition-transform duration-700 ease-in-out ${isSignUp ? 'translate-x-0' : '-translate-x-[20%]'}`}>
               <h1 className="text-4xl font-extrabold mb-4">Already a <br/>Member?</h1>
-              <p className="text-sm font-medium mb-8 opacity-90 max-w-[320px]">Sign in to your dashboard...</p>
+              <p className="text-sm font-medium mb-8 opacity-90 max-w-[320px]">Sign in to your dashboard and continue your learning journey.</p>
               <button onClick={() => setIsSignUp(false)} className="px-8 py-3 bg-transparent border-2 border-white rounded-xl font-bold text-sm tracking-wide hover:bg-white hover:text-slate-900 transition-all active:scale-95">Sign In</button>
             </div>
+
           </div>
         </div>
 
       </div>
+      
+      {/* Toast Notification */}
       {toast.show && (<div className="fixed top-5 right-5 z-50 bg-white px-6 py-4 rounded-xl shadow-2xl border-l-4 border-l-current flex items-center gap-3 animate-fade-in" style={{ borderColor: toast.type === "success" ? "#87C232" : "#ef4444" }}>{toast.type === "success" ? <CheckCircle className="text-[#87C232]" size={24} /> : <AlertCircle className="text-red-500" size={24} />}<div><h4 className="font-bold text-slate-800 text-sm">{toast.type === "success" ? "Success" : "Error"}</h4><p className="text-slate-500 text-xs">{toast.message}</p></div><button onClick={() => setToast({ ...toast, show: false })} className="ml-2 text-slate-400 hover:text-slate-600"><X size={16} /></button></div>)}
     </div>
   );

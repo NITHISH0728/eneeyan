@@ -2,8 +2,8 @@ import { useState, useEffect } from "react";
 import axios from "axios";
 import { 
   Users, TrendingUp, IndianRupee, BookOpen, 
-  UserPlus, FileText, MessageSquare
-} from "lucide-react"; // ✅ Imported IndianRupee
+  UserPlus, FileText, MessageSquare, X
+} from "lucide-react"; 
 import { motion } from "framer-motion";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area } from 'recharts';
 
@@ -17,6 +17,11 @@ const Dashboard = () => {
     pendingReviews: 2, 
     messages: 8 
   });
+
+  const [userRole, setUserRole] = useState("");
+  // Live Session States (Student View Only)
+  const [activeSession, setActiveSession] = useState<any>(null);
+  const [showPlayerModal, setShowPlayerModal] = useState(false);
 
   // Mock Data for Charts (Keep as visual placeholder)
   const activityData = [ { name: 'Mon', students: 12 }, { name: 'Tue', students: 19 }, { name: 'Wed', students: 35 }, { name: 'Thu', students: 28 }, { name: 'Fri', students: 45 }, { name: 'Sat', students: 60 }, { name: 'Sun', students: 55 } ];
@@ -35,17 +40,26 @@ const Dashboard = () => {
   useEffect(() => {
     const fetchStats = async () => {
       const token = localStorage.getItem("token");
+      // Determine role roughly from token (or you can store it in localStorage on login)
+      const storedRole = localStorage.getItem("role") || "student"; // Defaulting to student if not found
+      setUserRole(storedRole);
+
       try {
         const config = { headers: { Authorization: `Bearer ${token}` } };
         
         // 1. Fetch Real Courses Count
         const coursesRes = await axios.get("http://127.0.0.1:8000/api/v1/courses", config);
         
-        // 2. Fetch Real Students Count
-        const studentsRes = await axios.get("http://127.0.0.1:8000/api/v1/admin/students", config);
+        // 2. Fetch Real Students Count (Only if instructor)
+        let studentCount = 0;
+        if (storedRole === "instructor") {
+            try {
+                const studentsRes = await axios.get("http://127.0.0.1:8000/api/v1/admin/students", config);
+                studentCount = studentsRes.data.length;
+            } catch (e) { console.log("Not authorized to fetch students"); }
+        }
 
         // 3. Calculate Real Stats
-        const studentCount = studentsRes.data.length;
         const courseCount = coursesRes.data.length;
         const revenue = studentCount * 599; // Assuming ₹599 per student
 
@@ -54,13 +68,26 @@ const Dashboard = () => {
             revenue: revenue,
             students: studentCount,
             courses: courseCount,
-            newEnrollments: studentCount // Showing total students as new enrollments for now
+            newEnrollments: studentCount 
         }));
+
+        // 4. CHECK FOR ACTIVE LIVE SESSION
+        const liveRes = await axios.get("http://127.0.0.1:8000/api/v1/live/active", config);
+        if (liveRes.data && liveRes.data.length > 0) {
+            setActiveSession(liveRes.data[0]);
+        }
 
       } catch (err) { console.error("Failed to load dashboard stats", err); }
     };
     fetchStats();
   }, []);
+
+  // Extract YouTube ID Helper
+  const getYoutubeId = (url: string) => {
+    const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|&v=)([^#&?]*).*/;
+    const match = url.match(regExp);
+    return (match && match[2].length === 11) ? match[2] : null;
+  };
 
   const AnimatedCounter = ({ value, prefix = "" }: { value: number, prefix?: string }) => {
       const [count, setCount] = useState(0);
@@ -74,8 +101,32 @@ const Dashboard = () => {
   };
 
   return (
-    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex flex-col gap-8">
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex flex-col gap-8 relative">
       
+      {/* --- STUDENT ONLY: JOIN LIVE CARD --- */}
+      {/* ✅ FIX: Only show this banner if role is STUDENT */}
+      {activeSession && userRole === "student" && (
+        <motion.div 
+            initial={{ y: -20, opacity: 0 }} animate={{ y: 0, opacity: 1 }}
+            className="bg-gradient-to-r from-red-600 to-red-500 rounded-2xl p-6 text-white shadow-xl flex justify-between items-center"
+        >
+            <div>
+                <div className="flex items-center gap-2 mb-1">
+                    <span className="w-3 h-3 bg-white rounded-full animate-ping"></span>
+                    <span className="font-bold uppercase tracking-widest text-xs">Live Class In Progress</span>
+                </div>
+                <h2 className="text-2xl font-extrabold">{activeSession.topic}</h2>
+                <p className="text-red-100 text-sm mt-1">Join the interactive session now.</p>
+            </div>
+            <button 
+                onClick={() => setShowPlayerModal(true)}
+                className="bg-white text-red-600 px-6 py-3 rounded-xl font-bold hover:bg-red-50 transition-colors shadow-sm"
+            >
+                Join Live Class
+            </button>
+        </motion.div>
+      )}
+
       {/* Welcome Section */}
       <div>
         <h1 className="text-3xl font-extrabold text-slate-800 mb-2">Dashboard Overview</h1>
@@ -129,16 +180,14 @@ const Dashboard = () => {
               </div>
           </div>
 
-          {/* REVENUE (Changed to Rupee) */}
+          {/* REVENUE */}
           <div style={{ background: theme.cardBg, borderColor: theme.border }} className="p-6 rounded-2xl border">
               <div className="flex justify-between items-start mb-4">
                 <div>
                     <p className="text-xs font-bold text-slate-500 uppercase">Revenue</p>
-                    {/* ✅ Changed Prefix to Rupee Symbol */}
                     <h2 className="text-3xl font-bold text-slate-800 mt-1"><AnimatedCounter value={stats.revenue} prefix="₹" /></h2>
                 </div>
                 <div className="p-2 bg-slate-100 rounded-lg">
-                    {/* ✅ Changed Icon to IndianRupee */}
                     <IndianRupee size={24} strokeWidth={1.5} color={theme.iconColor} />
                 </div>
               </div>
@@ -196,6 +245,26 @@ const Dashboard = () => {
             </LineChart>
           </ResponsiveContainer>
       </div>
+
+      {/* --- STUDENT MODAL: PLAY LIVE STREAM --- */}
+      {showPlayerModal && activeSession && (
+        <div className="fixed inset-0 bg-black/90 z-50 flex flex-col items-center justify-center p-4">
+            <div className="w-full max-w-5xl bg-black rounded-2xl overflow-hidden relative shadow-2xl border border-slate-800">
+                 <button onClick={() => setShowPlayerModal(false)} className="absolute top-4 right-4 text-white hover:text-red-500 z-10"><X size={32} /></button>
+                 <div className="relative pt-[56.25%]">
+                    <iframe 
+                        className="absolute top-0 left-0 w-full h-full"
+                        src={`https://www.youtube.com/embed/${getYoutubeId(activeSession.youtube_url)}?autoplay=1`}
+                        title="Live Class"
+                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
+                        allowFullScreen
+                    ></iframe>
+                 </div>
+            </div>
+            <h2 className="text-white text-2xl font-bold mt-4">{activeSession.topic}</h2>
+        </div>
+      )}
+
     </motion.div>
   );
 };

@@ -140,6 +140,34 @@ const CourseBuilder = () => {
     const token = localStorage.getItem("token");
     const typeKey = activeModal?.toLowerCase().replace(" ", "_") || "video";
 
+    // 🔴 SPECIAL LOGIC FOR LIVE CLASS
+    if (activeModal === "Live Class") {
+        try {
+            // 1. Activate Global Live Session
+            await axios.post("http://127.0.0.1:8000/api/v1/live/start", {
+                youtube_url: itemUrl,
+                topic: itemTitle
+            }, { headers: { Authorization: `Bearer ${token}` } });
+
+            // 2. Save as Lesson in Course Curriculum
+            const payload = {
+                title: itemTitle,
+                type: "live_class", // Matches backend type
+                data_url: itemUrl,
+                module_id: selectedModuleId
+            };
+            await axios.post(`http://127.0.0.1:8000/api/v1/content`, payload, { headers: { Authorization: `Bearer ${token}` } });
+            
+            triggerToast("🔴 Live Class Started & Added to Curriculum!", "success");
+            setActiveModal(null); resetForm();
+            return;
+        } catch (err) {
+            triggerToast("Failed to start Live Class", "error");
+            return;
+        }
+    }
+
+    // --- REGULAR ITEM LOGIC ---
     const payload: any = {
       title: itemTitle,
       type: typeKey,
