@@ -141,7 +141,8 @@ class ContentUpdate(BaseModel):
 class CodeExecutionRequest(BaseModel):
     source_code: str
     stdin: str
-
+    language_id: int = 71
+    
 class AIGenerateRequest(BaseModel):
     title: str
 
@@ -500,12 +501,20 @@ def get_test_results(test_id: int, db: Session = Depends(get_db), current_user: 
 @app.post("/api/v1/execute")
 def execute_code(req: CodeExecutionRequest, db: Session = Depends(get_db)):
     url = f"https://{os.getenv('JUDGE0_API_HOST')}/submissions?base64_encoded=false&wait=true"
-    payload = { "source_code": req.source_code, "language_id": 71, "stdin": req.stdin }
+    
+    # ✅ FIX: Use 'req.language_id' instead of hardcoded 71
+    payload = { 
+        "source_code": req.source_code, 
+        "language_id": req.language_id, 
+        "stdin": req.stdin 
+    }
+    
     headers = { 
         "content-type": "application/json", 
         "X-RapidAPI-Key": os.getenv("JUDGE0_API_KEY"), 
         "X-RapidAPI-Host": os.getenv("JUDGE0_API_HOST") 
     }
+    
     try:
         response = requests.post(url, json=payload, headers=headers)
         return response.json()

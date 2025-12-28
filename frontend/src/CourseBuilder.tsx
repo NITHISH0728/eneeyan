@@ -32,6 +32,9 @@ const CourseBuilder = () => {
   const [isPublishing, setIsPublishing] = useState(false);
   const [selectedModuleId, setSelectedModuleId] = useState<number | null>(null);
 
+  // ✅ FIX 1: Add Loading State (Prevents Header Moving/Jumping)
+  const [isLoading, setIsLoading] = useState(true);
+
   // ✅ NEW: Course Details State (For Hybrid Check)
   const [courseDetails, setCourseDetails] = useState<any>(null);
 
@@ -74,7 +77,12 @@ const CourseBuilder = () => {
       const courseRes = await axios.get(`http://127.0.0.1:8000/api/v1/courses/${courseId}`, { headers: { Authorization: `Bearer ${token}` } });
       setCourseDetails(courseRes.data); 
       
-    } catch (err) { console.error("Failed to load modules", err); }
+    } catch (err) { 
+        console.error("Failed to load modules", err); 
+    } finally {
+        // ✅ Stop loading only after data is ready (Stops Layout Shift)
+        setIsLoading(false);
+    }
   };
 
   const handleAddModule = async () => {
@@ -233,7 +241,10 @@ const CourseBuilder = () => {
             setCDesc(res.data.description);
             const parsedTests = typeof res.data.test_cases === 'string' ? JSON.parse(res.data.test_cases) : res.data.test_cases;
             setCTests(parsedTests);
-        } catch(err) { alert("AI Error"); }
+        } catch(err) { 
+            // ✅ FIX 2: Replace alert with Toast
+            triggerToast("AI Generation Failed. Try again.", "error"); 
+        }
         setLoadingAI(false);
     };
 
@@ -242,9 +253,16 @@ const CourseBuilder = () => {
             await axios.post(`http://127.0.0.1:8000/api/v1/courses/${courseId}/challenges`, {
                 title: cTitle, description: cDesc, difficulty: activeTab, test_cases: JSON.stringify(cTests)
             }, { headers: { Authorization: `Bearer ${token}` } });
-            alert("Problem Added!"); loadChallenges();
+            
+            // ✅ FIX 2: Replace alert with Toast
+            triggerToast("Problem Added Successfully!", "success");
+            
+            loadChallenges();
             setCTitle(""); setCDesc(""); setCTests([{ input: "", output: "", hidden: false }]);
-        } catch (err: any) { alert(err.response?.data?.detail || "Error"); }
+        } catch (err: any) { 
+            // ✅ FIX 2: Replace alert with Toast
+            triggerToast(err.response?.data?.detail || "Error saving problem", "error"); 
+        }
     };
 
     return (
@@ -320,6 +338,19 @@ const CourseBuilder = () => {
     );
   };
 
+  // ✅ LOADING SCREEN: Prevents Layout Shift / Moving Header
+  if (isLoading) {
+      return (
+          <div style={{ height: "100vh", display: "flex", justifyContent: "center", alignItems: "center", background: brand.bg }}>
+              <div style={{ textAlign: "center" }}>
+                  <div style={{ width: "40px", height: "40px", border: `4px solid ${brand.border}`, borderTop: `4px solid ${brand.blue}`, borderRadius: "50%", animation: "spin 1s linear infinite", margin: "0 auto 15px" }}></div>
+                  <style>{`@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }`}</style>
+                  <p style={{ color: brand.textLight, fontWeight: "600" }}>Loading Builder...</p>
+              </div>
+          </div>
+      );
+  }
+
   // ✅ CONDITIONAL RENDER: SWITCH TO CODING BUILDER IF TYPE IS CODING
   if (courseDetails?.course_type === "coding") {
     return <CodingCourseBuilder />;
@@ -328,6 +359,7 @@ const CourseBuilder = () => {
   // --- STANDARD COURSE RENDER (UNCHANGED) ---
   return (
     <div style={{ maxWidth: "1400px", margin: "0 auto", paddingBottom: "100px", background: brand.bg, minHeight: "100vh" }}>
+      {/* Removed animation from this header to prevent "moving" issues */}
       <header style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "32px", background: brand.cardBg, padding: "16px 40px", borderBottom: `1px solid ${brand.border}`, position: "sticky", top: 0, zIndex: 50 }}>
         <div style={{ display: "flex", alignItems: "center", gap: "20px" }}>
           <button onClick={() => navigate("/dashboard/courses")} style={{ background: "#E2E8F0", border: "none", padding: "10px", borderRadius: "50%", cursor: "pointer" }}><ArrowLeft size={20} color={brand.textMain} /></button>
@@ -336,8 +368,8 @@ const CourseBuilder = () => {
           </div>
         </div>
         <div style={{ display: "flex", gap: "12px" }}>
-           <button onClick={() => navigate(`/dashboard/course/${courseId}/preview`)} style={{ padding: "10px 20px", background: "white", color: "#005EB8", border: "1px solid #005EB8", borderRadius: "8px", fontWeight: "600", cursor: "pointer" }}>Preview & Manage</button>
-           <button onClick={handlePublish} disabled={isPublishing} style={{ padding: "12px 32px", borderRadius: "10px", border: "none", background: brand.green, color: "white", fontWeight: "800", cursor: "pointer" }}>{isPublishing ? "Publishing..." : "Publish Course"}</button>
+            <button onClick={() => navigate(`/dashboard/course/${courseId}/preview`)} style={{ padding: "10px 20px", background: "white", color: "#005EB8", border: "1px solid #005EB8", borderRadius: "8px", fontWeight: "600", cursor: "pointer" }}>Preview & Manage</button>
+            <button onClick={handlePublish} disabled={isPublishing} style={{ padding: "12px 32px", borderRadius: "10px", border: "none", background: brand.green, color: "white", fontWeight: "800", cursor: "pointer" }}>{isPublishing ? "Publishing..." : "Publish Course"}</button>
         </div>
       </header>
 

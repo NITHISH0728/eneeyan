@@ -1,7 +1,8 @@
 import { useState } from "react";
 import axios from "axios";
 import { useNavigate } from "react-router-dom";
-import { Save, Image as ImageIcon, IndianRupee, ArrowLeft, Clock } from "lucide-react";
+// ✅ Updated Imports: Added CheckCircle, AlertCircle, X for professional icons
+import { Save, Image as ImageIcon, IndianRupee, ArrowLeft, Clock, CheckCircle, AlertCircle, X } from "lucide-react";
 
 const CreateCourse = () => {
   const navigate = useNavigate();
@@ -10,7 +11,14 @@ const CreateCourse = () => {
     title: "", description: "", price: "", image_url: "", duration: "", 
     course_type: "standard", language: "python" // NEW FIELDS
   });
+  const [toast, setToast] = useState({ show: false, message: "", type: "success" });
   const [isFree, setIsFree] = useState(false);
+
+  const triggerToast = (message: string, type: "success" | "error") => {
+    setToast({ show: true, message, type: type as "success" | "error" });
+    // Auto-hide after 4 seconds
+    setTimeout(() => setToast({ show: false, message: "", type: "success" }), 4000);
+  };
 
   // 🎨 PROFESSIONAL THEME
   const brand = {
@@ -24,9 +32,12 @@ const CreateCourse = () => {
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault(); setLoading(true);
+    e.preventDefault(); 
+    setLoading(true);
+    
     const token = localStorage.getItem("token");
     const finalDescription = formData.duration ? `${formData.description}\n\n[Duration: ${formData.duration}]` : formData.description;
+    
     const payload = {
         title: formData.title,
         description: finalDescription,
@@ -35,12 +46,26 @@ const CreateCourse = () => {
         course_type: formData.course_type, // Send type
         language: formData.course_type === "coding" ? formData.language : null // Send language
     };
+
     try {
-    // ✅ CORRECT: Use the 'payload' variable you created
-const response = await axios.post("http://127.0.0.1:8000/api/v1/courses", payload, { headers: { Authorization: `Bearer ${token}` } });
-      alert("Course Created Successfully! 🎉 Let's add some content.");
-      navigate(`/dashboard/course/${response.data.id}/builder`);
-    } catch (error: any) { console.error(error); alert("Failed to create course."); } finally { setLoading(false); }
+      // ✅ CORRECT: Use the 'payload' variable
+      const response = await axios.post("http://127.0.0.1:8000/api/v1/courses", payload, { headers: { Authorization: `Bearer ${token}` } });
+      
+      // 1. Show Success Toast
+      triggerToast("Course Created Successfully! 🎉 Redirecting...", "success");
+      
+      // 2. 🛑 WAIT 2 SECONDS before redirecting so user sees the message
+      setTimeout(() => {
+          navigate(`/dashboard/course/${response.data.id}/builder`);
+      }, 2000);
+
+    } catch (error: any) { 
+        console.error(error);
+        triggerToast("Failed to create course. Please try again.", "error"); 
+    } finally { 
+        // Note: We don't set loading false immediately on success so the button stays disabled during redirect
+        if (!toast.show) setLoading(false); 
+    }
   };
 
   return (
@@ -57,45 +82,60 @@ const response = await axios.post("http://127.0.0.1:8000/api/v1/courses", payloa
         </button>
       </div>
 
+      {/* ✅ TOAST NOTIFICATION UI */}
+      {toast.show && (
+        <div style={{ position: "fixed", top: "20px", right: "20px", zIndex: 9999, background: "white", padding: "16px 24px", borderRadius: "12px", boxShadow: "0 10px 30px -5px rgba(0,0,0,0.15)", borderLeft: `6px solid ${toast.type === "success" ? brand.green : "#ef4444"}`, display: "flex", alignItems: "center", gap: "12px", animation: "slideIn 0.3s ease-out" }}>
+            {toast.type === "success" ? <CheckCircle size={24} color={brand.green} /> : <AlertCircle size={24} color="#ef4444" />}
+            <div>
+                <h4 style={{ margin: "0 0 4px 0", fontSize: "14px", fontWeight: "700", color: brand.textMain }}>{toast.type === "success" ? "Success" : "Error"}</h4>
+                <p style={{ margin: 0, fontSize: "13px", color: brand.textLabel }}>{toast.message}</p>
+            </div>
+            <button onClick={() => setToast({ ...toast, show: false })} style={{ background: "none", border: "none", cursor: "pointer", marginLeft: "10px", color: "#94a3b8" }}><X size={16} /></button>
+            <style>{`@keyframes slideIn { from { opacity: 0; transform: translateX(20px); } to { opacity: 1; transform: translateX(0); } }`}</style>
+        </div>
+      )}
+
       {/* Main Form Card (Off-White) */}
       <div style={{ background: brand.cardBg, padding: "40px", borderRadius: "16px", border: `1px solid ${brand.border}`, boxShadow: "0 10px 30px -10px rgba(0, 0, 0, 0.05)" }}>
         <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "28px" }}>
-         // 2. Add this UI block ABOVE the "Course Title" input
-<div style={{ marginBottom: "24px", padding: "20px", background: "#f1f5f9", borderRadius: "12px" }}>
-    <label style={labelStyle}>Select Course Type</label>
-    <div style={{ display: "flex", gap: "20px", marginTop: "10px" }}>
-        <div onClick={() => setFormData({...formData, course_type: "standard"})} 
-             style={{ flex: 1, padding: "15px", background: formData.course_type === "standard" ? "white" : "transparent", border: formData.course_type === "standard" ? `2px solid ${brand.blue}` : "1px solid #cbd5e1", borderRadius: "10px", cursor: "pointer", display: "flex", alignItems: "center", gap: "10px" }}>
-             <div style={{ width: "20px", height: "20px", borderRadius: "50%", border: "2px solid #cbd5e1", background: formData.course_type === "standard" ? brand.blue : "transparent" }} />
-             <div>
-                 <div style={{ fontWeight: "700", color: brand.textMain }}>Standard Course</div>
-                 <div style={{ fontSize: "12px", color: brand.textLabel }}>Video, PDF, Quizzes & Assignments</div>
-             </div>
-        </div>
+          
+          {/* 2. Add this UI block ABOVE the "Course Title" input */}
+          <div style={{ marginBottom: "24px", padding: "20px", background: "#f1f5f9", borderRadius: "12px" }}>
+            <label style={labelStyle}>Select Course Type</label>
+            <div style={{ display: "flex", gap: "20px", marginTop: "10px" }}>
+                <div onClick={() => setFormData({...formData, course_type: "standard"})} 
+                     style={{ flex: 1, padding: "15px", background: formData.course_type === "standard" ? "white" : "transparent", border: formData.course_type === "standard" ? `2px solid ${brand.blue}` : "1px solid #cbd5e1", borderRadius: "10px", cursor: "pointer", display: "flex", alignItems: "center", gap: "10px" }}>
+                     <div style={{ width: "20px", height: "20px", borderRadius: "50%", border: "2px solid #cbd5e1", background: formData.course_type === "standard" ? brand.blue : "transparent" }} />
+                     <div>
+                         <div style={{ fontWeight: "700", color: brand.textMain }}>Standard Course</div>
+                         <div style={{ fontSize: "12px", color: brand.textLabel }}>Video, PDF, Quizzes & Assignments</div>
+                     </div>
+                </div>
 
-        <div onClick={() => setFormData({...formData, course_type: "coding"})} 
-             style={{ flex: 1, padding: "15px", background: formData.course_type === "coding" ? "white" : "transparent", border: formData.course_type === "coding" ? `2px solid ${brand.green}` : "1px solid #cbd5e1", borderRadius: "10px", cursor: "pointer", display: "flex", alignItems: "center", gap: "10px" }}>
-             <div style={{ width: "20px", height: "20px", borderRadius: "50%", border: "2px solid #cbd5e1", background: formData.course_type === "coding" ? brand.green : "transparent" }} />
-             <div>
-                 <div style={{ fontWeight: "700", color: brand.textMain }}>Coding Course</div>
-                 <div style={{ fontSize: "12px", color: brand.textLabel }}>Practice Problems with Compiler</div>
-             </div>
-        </div>
-    </div>
+                <div onClick={() => setFormData({...formData, course_type: "coding"})} 
+                     style={{ flex: 1, padding: "15px", background: formData.course_type === "coding" ? "white" : "transparent", border: formData.course_type === "coding" ? `2px solid ${brand.green}` : "1px solid #cbd5e1", borderRadius: "10px", cursor: "pointer", display: "flex", alignItems: "center", gap: "10px" }}>
+                     <div style={{ width: "20px", height: "20px", borderRadius: "50%", border: "2px solid #cbd5e1", background: formData.course_type === "coding" ? brand.green : "transparent" }} />
+                     <div>
+                         <div style={{ fontWeight: "700", color: brand.textMain }}>Coding Course</div>
+                         <div style={{ fontSize: "12px", color: brand.textLabel }}>Practice Problems with Compiler</div>
+                     </div>
+                </div>
+            </div>
 
-    {/* SHOW LANGUAGE ONLY IF CODING COURSE */}
-    {formData.course_type === "coding" && (
-        <div style={{ marginTop: "20px", animation: "fadeIn 0.3s" }}>
-            <label style={labelStyle}>Programming Language</label>
-            <select value={formData.language} onChange={(e) => setFormData({...formData, language: e.target.value})} style={inputStyle}>
-                <option value="python">Python (3.8.1)</option>
-                <option value="java">Java (OpenJDK 13)</option>
-                <option value="cpp">C++ (GCC 9.2)</option>
-                <option value="javascript">JavaScript (Node.js)</option>
-            </select>
-        </div>
-    )}
-</div> 
+            {/* SHOW LANGUAGE ONLY IF CODING COURSE */}
+            {formData.course_type === "coding" && (
+                <div style={{ marginTop: "20px", animation: "fadeIn 0.3s" }}>
+                    <label style={labelStyle}>Programming Language</label>
+                    <select value={formData.language} onChange={(e) => setFormData({...formData, language: e.target.value})} style={inputStyle}>
+                        <option value="python">Python (3.8.1)</option>
+                        <option value="java">Java (OpenJDK 13)</option>
+                        <option value="cpp">C++ (GCC 9.2)</option>
+                        <option value="javascript">JavaScript (Node.js)</option>
+                    </select>
+                </div>
+            )}
+          </div> 
+
           <div>
             <label style={labelStyle}>Course Title</label>
             <input type="text" placeholder="e.g. Advanced Java Masterclass" value={formData.title} onChange={(e) => setFormData({...formData, title: e.target.value})} required style={inputStyle} />
