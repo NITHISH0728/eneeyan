@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
 import { 
@@ -11,7 +11,7 @@ import {
 import { initializeApp } from "firebase/app";
 import { getAuth, RecaptchaVerifier, signInWithPhoneNumber } from "firebase/auth";
 
-// ⚙️ FIREBASE CONFIGURATION (Loaded from .env)
+// ⚙️ FIREBASE CONFIGURATION
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
   authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
@@ -22,9 +22,9 @@ const firebaseConfig = {
   measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID
 };
 
-// Initialize Firebase
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
+auth.useDeviceLanguage(); // 🌍 Auto-detect language
 
 // Google Icon Component
 const GoogleIcon = () => (
@@ -59,73 +59,121 @@ const Login = () => {
   const activeText = isSignUp ? "text-[#87C232]" : "text-[#005EB8]";
 
   // ✅ API URL FROM ENV
-  const API_URL = import.meta.env.VITE_API_URL;
+  const API_URL = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000/api/v1";
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => { setFormData({ ...formData, [e.target.name]: e.target.value }); };
   const triggerToast = (message: string, type: "success" | "error" = "success") => { setToast({ show: true, message, type }); setTimeout(() => setToast((prev) => ({ ...prev, show: false })), 3000); };
 
-  // 🔥 1. CAPTCHA SETUP (Invisible)
-  const onCaptchVerify = () => {
-    if (!(window as any).recaptchaVerifier) {
-        (window as any).recaptchaVerifier = new RecaptchaVerifier(auth, 'recaptcha-container', {
-            'size': 'invisible',
-            'callback': () => {
-                // Captcha solved - handled automatically
-            },
-            'expired-callback': () => {
-                triggerToast("Captcha Expired. Refresh page.", "error");
-            }
-        });
+  // 🔥 1. ROBUST RECAPTCHA INIT (The Fix for "Ghost Captcha")
+  useEffect(() => {
+    // Whenever we switch to SignUp mode, reset the captcha
+    if (isSignUp) {
+        // Clear old instance if it exists to avoid conflicts
+        if ((window as any).recaptchaVerifier) {
+            (window as any).recaptchaVerifier.clear();
+            (window as any).recaptchaVerifier = null;
+        }
+
+        try {
+            (window as any).recaptchaVerifier = new RecaptchaVerifier(auth, 'recaptcha-container', {
+                'size': 'invisible',
+                'callback': () => console.log("Captcha Verified"),
+                'expired-callback': () => triggerToast("Captcha expired. Reload page.", "error")
+            });
+        } catch (err) {
+            console.error("Recaptcha Init Error:", err);
+        }
     }
-  };
+  }, [isSignUp]);
 
   // 🔥 2. SEND OTP LOGIC
-  const onSignInSubmit = () => {
+  const onSignInSubmit = async () => {
     if (!phone || phone.length < 10) return triggerToast("Please enter a valid phone number", "error");
     
     setLoading(true);
-    onCaptchVerify();
     
     // Auto-add +91 if user didn't type country code
     const phoneNumber = phone.startsWith("+") ? phone : "+91" + phone; 
-    const appVerifier = (window as any).recaptchaVerifier;
+    
+    try {
+        const appVerifier = (window as any).recaptchaVerifier;
+        const confirmation = await signInWithPhoneNumber(auth, phoneNumber, appVerifier);
+        
+        // Save result
+        setConfirmationResult(confirmation);
+        (window as any).confirmationResult = confirmation;
+        
+        setLoading(false);
+        setShowOtpInput(true); 
+        triggerToast("OTP Sent! (Use Test Number if dev)", "success");
 
-    signInWithPhoneNumber(auth, phoneNumber, appVerifier)
-    .then((confirmationResult) => {
-      (window as any).confirmationResult = confirmationResult;
-      setConfirmationResult(confirmationResult);
-      setLoading(false);
-      setShowOtpInput(true); // Switch to OTP View
-      triggerToast("OTP Sent Successfully! Check your phone.", "success");
-    }).catch((error) => {
-      console.error(error);
-      setLoading(false);
-      triggerToast("Failed to send OTP. Try again later.", "error");
-    });
+    } catch (error: any) {
+        console.error("SMS Error:", error);
+        setLoading(false);
+        
+        // Reset Captcha so they can try again
+        if ((window as any).recaptchaVerifier) {
+            (window as any).recaptchaVerifier.clear();
+            (window as any).recaptchaVerifier = null;
+            // Re-init logic would go here or force a refresh
+        }
+
+        if (error.code === 'auth/invalid-phone-number') {
+            triggerToast("Invalid Phone Number Format.", "error");
+        } else if (error.code === 'auth/too-many-requests') {
+            triggerToast("Spam Limit Reached. Use Test Number +91 1234567890", "error");
+        } else {
+            triggerToast("SMS Failed: " + error.message, "error");
+        }
+    }
   };
 
   // 🔥 3. VERIFY OTP LOGIC
+  // 🔥 3. VERIFY OTP LOGIC
   const verifyOtp = () => {
-    if(!otp) return;
+    if (!otp) return;
     setLoading(true);
+    
+    // Safety check to ensure the SMS was actually sent
+    if (!confirmationResult) {
+        triggerToast("Session expired. Please request a new OTP.", "error");
+        setLoading(false);
+        return;
+    }
+
     confirmationResult.confirm(otp).then(async (result: any) => {
         setIsPhoneVerified(true);
         setLoading(false);
-        triggerToast("Phone Verified! Creating Account...", "success");
+        triggerToast("Phone Verified!", "success");
         
-        // 🔥 4. IF VERIFIED, CREATE ACCOUNT
-        await finalizeSignup();
+        // 🔥 4. DETERMINE FLOW BASED ON MODE
+        if (!isSignUp) {
+            // LOGIN FLOW: Ask backend for a token using the verified phone number
+            try {
+                const res = await axios.post(`${API_URL}/login-otp`, { 
+                    phone_number: phone.startsWith("+") ? phone : "+91" + phone 
+                });
+                localStorage.setItem("token", res.data.access_token); 
+                localStorage.setItem("role", res.data.role);
+                triggerToast("Login Successful!", "success");
+                setTimeout(() => navigate("/student-dashboard"), 1000);
+            } catch (err: any) {
+                triggerToast("Login failed. Is this number registered?", "error");
+            }
+        } else {
+            // SIGNUP FLOW: Proceed to create the user in DB
+            await finalizeSignup();
+        }
 
     }).catch((error: any) => {
         setLoading(false);
+        console.error("Verification Error:", error);
         triggerToast("Invalid OTP. Please try again.", "error");
     });
   };
-
   // 🔥 5. FINAL ACCOUNT CREATION (Backend Call)
   const finalizeSignup = async () => {
       try {
-        // ✅ USE API_URL
         await axios.post(`${API_URL}/users`, { 
             email: formData.email, 
             password: formData.password, 
@@ -141,8 +189,8 @@ const Login = () => {
         setIsPhoneVerified(false);
         setOtp("");
         setPhone("");
-      } catch (err) {
-        triggerToast("Database Error. This Email might already exist.", "error");
+      } catch (err: any) {
+        triggerToast(err.response?.data?.detail || "Registration Failed. Email may exist.", "error");
       }
   };
 
@@ -157,7 +205,6 @@ const Login = () => {
             loginParams.append("username", formData.email); 
             loginParams.append("password", formData.password);
             
-            // ✅ USE API_URL
             const res = await axios.post(`${API_URL}/login`, loginParams);
             
             if (res.data.role !== "student") { 
@@ -177,7 +224,7 @@ const Login = () => {
     // --- 🔵 SIGN UP FLOW ---
     else {
         if (!isPhoneVerified) {
-            onSignInSubmit(); 
+            await onSignInSubmit(); // Wait for OTP send
         } else {
             finalizeSignup();
         }
@@ -186,6 +233,7 @@ const Login = () => {
 
   return (
     <div className="flex items-center justify-center min-h-screen bg-[#E2E8F0] font-sans p-4 overflow-hidden relative">
+      {/* 🟢 RECAPTCHA CONTAINER (Must exist for OTP) */}
       <div id="recaptcha-container"></div> 
       
       <button onClick={() => navigate("/admin-login")} className="absolute top-6 right-6 flex items-center gap-2 px-4 py-2 bg-white rounded-full shadow-md text-slate-600 hover:text-[#005EB8] hover:shadow-lg transition-all z-50 font-bold text-sm border border-slate-200">
@@ -205,9 +253,6 @@ const Login = () => {
 
             <div className="flex gap-4 mb-6 w-full justify-center">
                 <button type="button" className="p-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 transition-all shadow-sm"><GoogleIcon /></button>
-                <button type="button" className="p-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 transition-all shadow-sm text-[#1877F2]"><Facebook size={20} fill="currentColor" strokeWidth={0} /></button>
-                <button type="button" className="p-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 transition-all shadow-sm text-slate-800"><Github size={20} /></button>
-                <button type="button" className="p-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 transition-all shadow-sm text-[#0A66C2]"><Linkedin size={20} fill="currentColor" strokeWidth={0} /></button>
             </div>
 
             <div className="flex items-center w-full mb-6">

@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { BrowserRouter as Router, Routes, Route, Navigate, useNavigate } from "react-router-dom";
 import axios from "axios";
-import { FileText, Edit, PlusCircle, BookOpen, Trash2 } from "lucide-react"; // ✅ Added Trash2
+import { FileText, Edit, PlusCircle, BookOpen, Trash2, CheckCircle, AlertCircle, X, AlertTriangle } from "lucide-react"; // ✅ Added Icons
 
 import AdminLogin from "./AdminLogin";
 import Login from "./Login";
@@ -25,6 +25,16 @@ const CourseList = () => {
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
 
+  // ✅ NEW: Toast State for Professional Notifications
+  const [toast, setToast] = useState<{ show: boolean; message: string; type: "success" | "error" }>({ 
+    show: false, message: "", type: "success" 
+  });
+
+  const triggerToast = (message: string, type: "success" | "error" = "success") => {
+    setToast({ show: true, message, type });
+    setTimeout(() => setToast(prev => ({ ...prev, show: false })), 3000);
+  };
+
   useEffect(() => {
     const fetchCourses = async () => {
       const token = localStorage.getItem("token");
@@ -39,27 +49,35 @@ const CourseList = () => {
     fetchCourses();
   }, []);
 
-  // ✅ NEW: Handle Delete Course
+  // ✅ UPDATED: Handle Delete Course with Toast Feedback
   const handleDeleteCourse = async (e: React.MouseEvent, courseId: number) => {
-    e.stopPropagation(); // Prevents opening the course when clicking delete
-    if (!confirm("Are you sure you want to delete this course? This cannot be undone.")) return;
+    e.stopPropagation(); 
+    
+    // Note: For critical deletes, a native confirm is acceptable, 
+    // but the Success/Failure messages must be professional Toasts.
+    if (!window.confirm("Are you sure you want to delete this course? This cannot be undone.")) return;
 
     try {
         const token = localStorage.getItem("token");
         await axios.delete(`http://127.0.0.1:8000/api/v1/courses/${courseId}`, {
             headers: { Authorization: `Bearer ${token}` }
         });
+        
         // Remove from UI immediately
         setCourses(courses.filter((c: any) => c.id !== courseId));
+        
+        // ✅ Professional Success Message
+        triggerToast("Course deleted successfully!", "success");
     } catch (err) {
-        alert("Failed to delete course. Ensure no students are enrolled or backend endpoint is active.");
+        // ✅ Professional Error Message (Replaced Alert)
+        triggerToast("Failed to delete course. Ensure no students are enrolled.", "error");
     }
   };
 
   if (loading) return <div style={{ padding: "40px", textAlign: "center" }}>Loading...</div>;
   
   return (
-    <div style={{ animation: "fadeIn 0.5s ease" }}>
+    <div style={{ animation: "fadeIn 0.5s ease", position: "relative" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "30px" }}>
         <div>
             <h2 style={{ fontSize: "24px", fontWeight: "700", color: "#1e293b", margin: 0 }}>My Courses</h2>
@@ -81,11 +99,9 @@ const CourseList = () => {
                         {course.image_url ? <img src={course.image_url} alt={course.title} style={{width:"100%", height:"100%", objectFit:"cover"}} /> : <FileText size={48} color="#cbd5e1" />}
                     </div>
                     
-                    {/* ✅ UPDATED: Flex container for Title + Delete Button */}
                     <div style={{ padding: "20px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                         <h4 style={{ margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "80%" }}>{course.title}</h4>
                         
-                        {/* ✅ Delete Button */}
                         <button 
                             onClick={(e) => handleDeleteCourse(e, course.id)}
                             style={{ 
@@ -100,6 +116,29 @@ const CourseList = () => {
                 </div>
             ))}
         </div> 
+      )}
+
+      {/* ✅ TOAST NOTIFICATION COMPONENT */}
+      {toast.show && (
+        <div style={{ 
+            position: "fixed", top: "20px", right: "20px", 
+            background: "white", padding: "16px 24px", borderRadius: "12px", 
+            boxShadow: "0 10px 30px -5px rgba(0,0,0,0.15)", 
+            borderLeft: `6px solid ${toast.type === "success" ? "#87C232" : "#ef4444"}`,
+            display: "flex", alignItems: "center", gap: "12px", zIndex: 9999,
+            animation: "slideIn 0.3s ease-out"
+        }}>
+            {toast.type === "success" ? <CheckCircle size={24} color="#87C232" /> : <AlertTriangle size={24} color="#ef4444" />}
+            <div>
+                <h4 style={{ margin: "0", fontSize: "14px", fontWeight: "700", color: "#1e293b" }}>
+                    {toast.type === "success" ? "Success" : "Error"}
+                </h4>
+                <p style={{ margin: 0, fontSize: "13px", color: "#64748b" }}>{toast.message}</p>
+            </div>
+            <button onClick={() => setToast(prev => ({ ...prev, show: false }))} style={{ background: "none", border: "none", cursor: "pointer", marginLeft: "10px", color: "#94a3b8" }}>
+                <X size={16} />
+            </button>
+        </div>
       )}
     </div>
   );

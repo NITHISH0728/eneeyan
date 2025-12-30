@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import axios from "axios";
 import { 
   Plus, Code, ChevronRight, X, Sparkles, Check, Trash2, Edit, 
-  Download, Users, Clock, Trophy
+  Download, Users, Clock, Trophy, CheckCircle, AlertTriangle 
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -32,15 +32,15 @@ const CodeArena = () => {
   // --- PROBLEM LIST (Shopping Cart) ---
   const [addedProblems, setAddedProblems] = useState<any[]>([]);
 
-  // 🎨 PROFESSIONAL THEME
-  const brand = { 
-    blue: "#005EB8", 
-    green: "#87C232", 
-    bg: "#E2E8F0",          // Light Slate Background
-    cardBg: "#F8FAFC",      // Off-White Card
-    border: "#cbd5e1",      // Subtle Border
-    textMain: "#1e293b", 
-    textLight: "#64748b" 
+  // ✅ NEW: Toast State
+  const [toast, setToast] = useState<{ show: boolean; message: string; type: "success" | "error" }>({ 
+    show: false, message: "", type: "success" 
+  });
+
+  // ✅ NEW: Toast Helper
+  const triggerToast = (message: string, type: "success" | "error" = "success") => {
+    setToast({ show: true, message, type });
+    setTimeout(() => setToast(prev => ({ ...prev, show: false })), 3000);
   };
 
   useEffect(() => {
@@ -55,7 +55,6 @@ const CodeArena = () => {
     } catch (err) { console.error(err); }
   };
 
-  // ✅ UPDATED: FETCH UNIQUE RESULTS LOGIC
   const handleViewResults = async (testId: number, title: string) => {
     setSelectedTestTitle(title);
     setShowResultsModal(true);
@@ -67,22 +66,22 @@ const CodeArena = () => {
             headers: { Authorization: `Bearer ${token}` } 
         });
         
-        // 🔥 FIX: Deduplicate results by 'student_name' to show only one entry per student
         const uniqueResults = Array.from(new Map(res.data.map((item: any) => [item.student_name, item])).values());
-        
         setSelectedTestResults(uniqueResults);
     } catch (err) {
         console.error("Failed to fetch results", err);
+        triggerToast("Failed to load results", "error");
     } finally {
         setResultsLoading(false);
     }
   };
 
-  // ✅ UPDATED: DOWNLOAD CSV (Removed Score)
   const handleDownloadResults = () => {
-    if (selectedTestResults.length === 0) return alert("No results to download.");
+    if (selectedTestResults.length === 0) {
+        triggerToast("No results to download.", "error"); // ✅ Replaced Alert
+        return;
+    }
     
-    // Create CSV Content (Removed Score Column)
     const headers = "Student Name,Problems Solved,Time Taken\n";
     const rows = selectedTestResults.map(r => 
         `${r.student_name},${r.problems_solved},${r.time_taken}`
@@ -96,11 +95,14 @@ const CodeArena = () => {
     document.body.appendChild(link);
     link.click();
     link.remove();
+    triggerToast("Results downloaded successfully!", "success"); // ✅ Added Success Toast
   };
 
-  // ✨ AI GENERATION FUNCTION
   const handleAIGenerate = async () => {
-    if (!probTitle) return alert("Please enter a problem title first!");
+    if (!probTitle) {
+        triggerToast("Please enter a problem title first!", "error"); // ✅ Replaced Alert
+        return;
+    }
     setAiLoading(true);
     try {
         const token = localStorage.getItem("token");
@@ -108,15 +110,15 @@ const CodeArena = () => {
         
         setProbDesc(res.data.description);
         setTestCases(JSON.parse(res.data.test_cases));
+        triggerToast("AI Generated Content Successfully!", "success"); // ✅ Added Success Toast
     } catch (err) {
         console.error(err);
-        alert("AI Generation failed.");
+        triggerToast("AI Generation failed.", "error"); // ✅ Replaced Alert
     } finally {
         setAiLoading(false);
     }
   };
 
-  // --- PROBLEM MANAGEMENT ---
   const handleAddTestCase = () => setTestCases([...testCases, { input: "", output: "", hidden: false }]);
   
   const handleTestCaseChange = (index: number, field: string, value: any) => {
@@ -129,7 +131,10 @@ const CodeArena = () => {
   const handleRemoveTestCase = (index: number) => setTestCases(testCases.filter((_, i) => i !== index));
 
   const addProblemToChallenge = () => {
-    if(!probTitle || !probDesc) return alert("Please fill problem details");
+    if(!probTitle || !probDesc) {
+        triggerToast("Please fill problem details", "error"); // ✅ Replaced Alert
+        return;
+    }
     
     const newProblem = {
         title: probTitle,
@@ -140,15 +145,18 @@ const CodeArena = () => {
 
     setAddedProblems([...addedProblems, newProblem]);
     setProbTitle(""); setProbDesc(""); setTestCases([{ input: "", output: "", hidden: false }]);
+    triggerToast("Problem Added to List", "success"); // ✅ Added Success Toast
   };
 
   const removeProblem = (idx: number) => {
     setAddedProblems(addedProblems.filter((_, i) => i !== idx));
   };
 
-  // --- FINAL SAVE ---
   const handleSaveChallenge = async () => {
-    if(addedProblems.length === 0) return alert("Please add at least one problem!");
+    if(addedProblems.length === 0) {
+        triggerToast("Please add at least one problem!", "error"); // ✅ Replaced Alert
+        return;
+    }
     setLoading(true);
     try {
         const token = localStorage.getItem("token");
@@ -161,18 +169,19 @@ const CodeArena = () => {
         await axios.post("http://127.0.0.1:8000/api/v1/code-tests", payload, { headers: { Authorization: `Bearer ${token}` } });
         setShowModal(false);
         fetchTests();
-        alert("Challenge Created Successfully!");
+        triggerToast("Challenge Created Successfully!", "success"); // ✅ Replaced Alert
         setChallengeTitle(""); setPassKey(""); setAddedProblems([]);
     } catch (err) {
         console.error(err);
-        alert("Failed to create challenge");
+        triggerToast("Failed to create challenge", "error"); // ✅ Replaced Alert
     } finally {
         setLoading(false);
     }
   };
 
   return (
-    <div className="flex flex-col gap-6 font-sans">
+    <div className="flex flex-col gap-6 font-sans relative">
+        {/* ... (Header and List UI remains mostly the same) ... */}
         <div className="flex justify-between items-center mb-2">
             <div>
                 <h1 className="text-3xl font-extrabold text-[#1e293b]">Code Arena</h1>
@@ -183,7 +192,6 @@ const CodeArena = () => {
             </button>
         </div>
 
-        {/* Challenge List */}
         <div className="grid grid-cols-1 gap-4">
             {tests.length === 0 ? (
                 <div className="bg-[#F8FAFC] p-12 rounded-2xl text-center border-2 border-dashed border-[#cbd5e1] text-[#94a3b8]">
@@ -217,7 +225,6 @@ const CodeArena = () => {
             )}
         </div>
 
-        {/* CREATE MODAL */}
         <AnimatePresence>
             {showModal && (
                 <div className="fixed inset-0 bg-[#0f172a]/60 z-50 flex items-center justify-center backdrop-blur-sm p-4">
@@ -347,7 +354,7 @@ const CodeArena = () => {
             )}
         </AnimatePresence>
 
-        {/* ✅ NEW: RESULTS MODAL (Removed Score Column) */}
+        {/* Results Modal */}
         <AnimatePresence>
             {showResultsModal && (
                 <div className="fixed inset-0 bg-[#0f172a]/60 z-50 flex items-center justify-center backdrop-blur-sm p-4">
@@ -401,6 +408,29 @@ const CodeArena = () => {
                 </div>
             )}
         </AnimatePresence>
+
+        {/* ✅ NEW: TOAST NOTIFICATION COMPONENT */}
+        {toast.show && (
+            <div style={{ 
+                position: "fixed", top: "20px", right: "20px", 
+                background: "white", padding: "16px 24px", borderRadius: "12px", 
+                boxShadow: "0 10px 30px -5px rgba(0,0,0,0.15)", 
+                borderLeft: `6px solid ${toast.type === "success" ? "#87C232" : "#ef4444"}`,
+                display: "flex", alignItems: "center", gap: "12px", zIndex: 9999,
+                animation: "slideIn 0.3s ease-out"
+            }}>
+                {toast.type === "success" ? <CheckCircle size={24} color="#87C232" /> : <AlertTriangle size={24} color="#ef4444" />}
+                <div>
+                    <h4 style={{ margin: "0", fontSize: "14px", fontWeight: "700", color: "#1e293b" }}>
+                        {toast.type === "success" ? "Success" : "Error"}
+                    </h4>
+                    <p style={{ margin: 0, fontSize: "13px", color: "#64748b" }}>{toast.message}</p>
+                </div>
+                <button onClick={() => setToast(prev => ({ ...prev, show: false }))} style={{ background: "none", border: "none", cursor: "pointer", marginLeft: "10px", color: "#94a3b8" }}>
+                    <X size={16} />
+                </button>
+            </div>
+        )}
     </div>
   );
 };

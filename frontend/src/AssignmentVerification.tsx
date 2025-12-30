@@ -2,10 +2,10 @@ import { useState, useEffect } from "react";
 import axios from "axios";
 import { 
   ChevronDown, ChevronRight, CheckCircle, ExternalLink, 
-  User, FileText, FolderOpen, AlertTriangle, X 
+  XCircle, User, FileText, FolderOpen, AlertTriangle, X 
 } from "lucide-react";
 
-const AssignmentManager = () => { 
+const AssignmentVerification = () => {
   const [data, setData] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedCourse, setExpandedCourse] = useState<number | null>(null);
@@ -16,6 +16,7 @@ const AssignmentManager = () => {
     show: false, message: "", type: "success" 
   });
 
+  // ✅ NEW: Toast Helper
   const triggerToast = (message: string, type: "success" | "error" = "success") => {
     setToast({ show: true, message, type });
     setTimeout(() => setToast(prev => ({ ...prev, show: false })), 3000);
@@ -28,14 +29,12 @@ const AssignmentManager = () => {
   const fetchData = async () => {
     try {
       const token = localStorage.getItem("token");
-      
       const res = await axios.get("http://127.0.0.1:8000/api/v1/instructor/assignments", {
         headers: { Authorization: `Bearer ${token}` }
       });
-      
       setData(res.data);
     } catch (err) {
-      console.error("Error fetching assignments:", err);
+      console.error(err);
     } finally {
       setLoading(false);
     }
@@ -44,7 +43,6 @@ const AssignmentManager = () => {
   const verifyAssignment = async (submissionId: number) => {
     try {
       const token = localStorage.getItem("token");
-      
       await axios.post(`http://127.0.0.1:8000/api/v1/instructor/verify-assignment/${submissionId}`, {}, {
         headers: { Authorization: `Bearer ${token}` }
       });
@@ -55,7 +53,6 @@ const AssignmentManager = () => {
       // ✅ REPLACED ALERT WITH TOAST
       triggerToast("Assignment Verified Successfully!", "success");
     } catch (err) {
-      console.error("Verification failed", err);
       // ✅ REPLACED ALERT WITH TOAST
       triggerToast("Error verifying assignment", "error");
     }
@@ -70,8 +67,6 @@ const AssignmentManager = () => {
       </h1>
 
       <div className="space-y-4">
-        {data.length === 0 && <p className="text-slate-500">No courses or assignments found.</p>}
-        
         {data.map((course) => (
           <div key={course.course_id} className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
             
@@ -225,4 +220,4 @@ const AssignmentManager = () => {
   );
 };
 
-export default AssignmentManager;
+export default AssignmentVerification;

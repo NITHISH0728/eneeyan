@@ -8,25 +8,49 @@ import "plyr/dist/plyr.css";
 import { 
   PlayCircle, FileText, ChevronLeft, Menu, Code, HelpCircle, 
   UploadCloud, Play, Save, Monitor, Cpu, ChevronDown, ChevronRight, CreditCard,
-  File as FileIcon, X, CheckCircle, Radio, Lock, ArrowLeft
+  File as FileIcon, X, CheckCircle, Radio, Lock, ArrowLeft, AlertCircle
 } from "lucide-react";
 
-// --- 💻 COMPONENT: PROFESSIONAL CODE ARENA (MULTI-PROBLEM SUPPORT) ---
-// (EXISTING COMPONENT - UNCHANGED)
+// --- 🍞 SHARED TOAST COMPONENT ---
+const ToastNotification = ({ toast, setToast }: any) => {
+  if (!toast.show) return null;
+  return (
+    <div style={{ 
+        position: "fixed", top: "20px", right: "20px", zIndex: 9999, 
+        background: "white", padding: "16px 24px", borderRadius: "12px", 
+        boxShadow: "0 10px 30px -5px rgba(0,0,0,0.15)", 
+        borderLeft: `6px solid ${toast.type === "success" ? "#87C232" : "#ef4444"}`, 
+        display: "flex", alignItems: "center", gap: "12px", animation: "slideIn 0.3s ease-out" 
+    }}>
+        {toast.type === "success" ? <CheckCircle size={24} color="#87C232" /> : <AlertCircle size={24} color="#ef4444" />}
+        <div>
+            <h4 style={{ margin: "0", fontSize: "14px", fontWeight: "700", color: "#1e293b" }}>
+                {toast.type === "success" ? "Success" : "Error"}
+            </h4>
+            <p style={{ margin: 0, fontSize: "13px", color: "#64748b" }}>{toast.message}</p>
+        </div>
+        <button onClick={() => setToast({ ...toast, show: false })} style={{ background: "none", border: "none", cursor: "pointer", marginLeft: "10px" }}>
+            <X size={16} color="#94a3b8" />
+        </button>
+        <style>{`@keyframes slideIn { from { opacity: 0; transform: translateX(20px); } to { opacity: 1; transform: translateX(0); } }`}</style>
+    </div>
+  );
+};
+
+// --- 💻 COMPONENT: PROFESSIONAL CODE ARENA ---
 const CodeCompiler = ({ lesson }: { lesson: any }) => {
-  
-  // ✅ FIX: Robust JSON Parsing (Solves "Blank Page" Issue)
+  // ✅ Toast State
+  const [toast, setToast] = useState({ show: false, message: "", type: "success" });
+  const triggerToast = (message: string, type: "success" | "error" = "success") => {
+    setToast({ show: true, message, type });
+    setTimeout(() => setToast(prev => ({ ...prev, show: false })), 3000);
+  };
+
   const problems = useMemo(() => {
       try {
           if (!lesson.test_config) return [];
-          
           let parsed = JSON.parse(lesson.test_config);
-          
-          // 🔥 CRITICAL FIX: If double-stringified, parse again
-          if (typeof parsed === "string") {
-              parsed = JSON.parse(parsed);
-          }
-
+          if (typeof parsed === "string") parsed = JSON.parse(parsed);
           return parsed.problems || [];
       } catch (e) {
           console.error("❌ Failed to parse Code Test Config:", e);
@@ -58,7 +82,6 @@ const CodeCompiler = ({ lesson }: { lesson: any }) => {
         const res = await axios.post("http://127.0.0.1:8000/api/v1/execute", {
             source_code: code,
             language_id: language, 
-            // ✅ Fix: Use input from the ACTIVE problem's first test case
             stdin: activeProblem.testCases?.[0]?.input || "" 
         });
 
@@ -75,7 +98,7 @@ const CodeCompiler = ({ lesson }: { lesson: any }) => {
   };
 
   const saveProgress = () => {
-      alert("✅ Code Saved Successfully!");
+      triggerToast("Code Saved Successfully!", "success"); // ✅ Replaced Alert
   };
 
   if (!problems.length) return (
@@ -85,7 +108,9 @@ const CodeCompiler = ({ lesson }: { lesson: any }) => {
   );
 
   return (
-    <div className="flex h-full p-4 gap-4 bg-slate-100 font-sans">
+    <div className="flex h-full p-4 gap-4 bg-slate-100 font-sans relative">
+        <ToastNotification toast={toast} setToast={setToast} /> {/* ✅ Toast Rendered */}
+        
         <div className="w-[40%] flex flex-col gap-4">
             <div className="flex-1 bg-white rounded-xl shadow-sm border border-slate-200 p-6 overflow-y-auto">
                 {/* 🔹 PROBLEM TABS */}
@@ -111,7 +136,7 @@ const CodeCompiler = ({ lesson }: { lesson: any }) => {
                 <h3 className="text-xs font-extrabold text-slate-900 uppercase tracking-widest mb-3">Test Cases</h3>
                 <div className="space-y-3">
                     {activeProblem.testCases?.map((tc: any, i: number) => (
-                         (
+                          (
                             <div key={i} className="bg-slate-50 p-3 rounded-lg border border-slate-200">
                                 <div className="text-xs font-bold text-slate-500 mb-1">Input:</div>
                                 <div className="font-mono text-xs bg-white p-2 rounded border border-slate-200 mb-2">{tc.input}</div>
@@ -150,7 +175,7 @@ const CodeCompiler = ({ lesson }: { lesson: any }) => {
   );
 };
 
-// --- 🆕 COMPONENT: CODING COURSE PLAYER (Hybrid Feature) ---
+// --- 🆕 COMPONENT: CODING COURSE PLAYER ---
 const CodingPlayer = ({ course, token }: { course: any, token: string }) => {
     const { courseId } = useParams();
     const navigate = useNavigate();
@@ -161,6 +186,13 @@ const CodingPlayer = ({ course, token }: { course: any, token: string }) => {
     const [output, setOutput] = useState("Ready to execute...");
     const [loading, setLoading] = useState(false);
     const [verdict, setVerdict] = useState<string | null>(null);
+
+    // ✅ Toast State
+    const [toast, setToast] = useState({ show: false, message: "", type: "success" });
+    const triggerToast = (message: string, type: "success" | "error" = "success") => {
+        setToast({ show: true, message, type });
+        setTimeout(() => setToast(prev => ({ ...prev, show: false })), 3000);
+    };
 
     useEffect(() => { loadChallenges(); }, []);
     
@@ -245,10 +277,12 @@ const CodingPlayer = ({ course, token }: { course: any, token: string }) => {
         }
     };
 
-    // 1. RENDER PROBLEM SOLVING INTERFACE (REDESIGNED TO MATCH REFERENCE IMAGE)
+    // 1. RENDER PROBLEM SOLVING INTERFACE
     if (selectedProblem) {
         return (
-            <div className="flex h-screen w-screen bg-[#F8FAFC] font-sans p-6 overflow-hidden">
+            <div className="flex h-screen w-screen bg-[#F8FAFC] font-sans p-6 overflow-hidden relative">
+                 <ToastNotification toast={toast} setToast={setToast} /> {/* ✅ Toast Rendered */}
+                 
                  {/* LEFT PANEL: Problem Info */}
                  <div className="w-[35%] flex flex-col h-full bg-white rounded-2xl shadow-sm border border-slate-200 mr-6 overflow-hidden">
                      <div className="p-5 border-b border-slate-100 flex items-center gap-3">
@@ -326,7 +360,7 @@ const CodingPlayer = ({ course, token }: { course: any, token: string }) => {
 
                      {/* ACTION BUTTONS */}
                      <div className="flex justify-end gap-4 bg-white p-4 rounded-2xl shadow-sm border border-slate-200">
-                         <button onClick={() => alert("Saved!")} className="px-6 py-3 rounded-xl border border-slate-200 font-bold text-slate-600 hover:bg-slate-50 flex items-center gap-2">
+                         <button onClick={() => triggerToast("Progress Saved!", "success")} className="px-6 py-3 rounded-xl border border-slate-200 font-bold text-slate-600 hover:bg-slate-50 flex items-center gap-2">
                              <Save size={18} /> Save
                          </button>
                          <button onClick={runAndSubmit} disabled={loading} className="px-8 py-3 rounded-xl bg-[#005EB8] hover:bg-[#004a94] text-white font-bold shadow-lg shadow-blue-200 flex items-center gap-2 disabled:opacity-70 transition-all">
@@ -399,7 +433,7 @@ const CodingPlayer = ({ course, token }: { course: any, token: string }) => {
     )
 }
 
-// --- MAIN PLAYER COMPONENT (EXISTING LOGIC PRESERVED) ---
+// --- MAIN PLAYER COMPONENT ---
 const CoursePlayer = () => {
   const { courseId } = useParams();
   const navigate = useNavigate();
@@ -411,6 +445,13 @@ const CoursePlayer = () => {
   // File Upload State
   const [assignmentFile, setAssignmentFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
+
+  // ✅ Toast State
+  const [toast, setToast] = useState({ show: false, message: "", type: "success" });
+  const triggerToast = (message: string, type: "success" | "error" = "success") => {
+    setToast({ show: true, message, type });
+    setTimeout(() => setToast(prev => ({ ...prev, show: false })), 3000);
+  };
 
   const brand = { blue: "#005EB8", green: "#87C232", textMain: "#0f172a", textLight: "#64748b" };
 
@@ -425,12 +466,16 @@ const CoursePlayer = () => {
             name: "iQmath Pro",
             description: "Lifetime Course Access",
             order_id: data.id, 
-            handler: function (response: any) { alert(`Payment Successful! ID: ${response.razorpay_payment_id}`); },
+            handler: function (response: any) { 
+                triggerToast(`Payment Successful! ID: ${response.razorpay_payment_id}`, "success"); // ✅ Replaced Alert
+            },
             theme: { color: "#87C232" }
         };
         const rzp1 = new (window as any).Razorpay(options);
         rzp1.open();
-    } catch (error) { alert("Payment init failed"); }
+    } catch (error) { 
+        triggerToast("Payment init failed", "error"); // ✅ Replaced Alert
+    }
   };
 
   useEffect(() => {
@@ -472,22 +517,38 @@ const CoursePlayer = () => {
   const handleAssignmentUpload = async () => {
     if (!assignmentFile) return;
     setUploading(true);
+    const token = localStorage.getItem("token");
+
     try {
-        const formData = new FormData();
-        formData.append("file", assignmentFile);
-        formData.append("course_title", course?.title || "Unknown Course");
-        formData.append("lesson_title", activeLesson.title);
+        const ticketRes = await axios.post("http://127.0.0.1:8000/api/v1/get-upload-url", {
+            lesson_title: activeLesson.title,
+            file_name: assignmentFile.name,
+            file_type: assignmentFile.type
+        }, { headers: { "Authorization": `Bearer ${token}` } });
 
-        const token = localStorage.getItem("token");
-        await axios.post("http://127.0.0.1:8000/api/v1/submit-assignment", formData, {
-            headers: { "Authorization": `Bearer ${token}`, "Content-Type": "multipart/form-data" }
+        const uploadUrl = ticketRes.data.upload_url;
+
+        await axios.put(uploadUrl, assignmentFile, {
+            headers: { "Content-Type": assignmentFile.type },
+            onUploadProgress: (progressEvent) => {
+                if (progressEvent.total) {
+                    const percent = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+                    console.log(`Uploading to Drive: ${percent}%`);
+                }
+            }
         });
+        
+        await axios.post("http://127.0.0.1:8000/api/v1/confirm-submission", {
+            lesson_title: activeLesson.title,
+            file_name: assignmentFile.name
+        }, { headers: { "Authorization": `Bearer ${token}` } });
 
-        alert(`✅ Assignment "${assignmentFile.name}" Submitted Successfully!`);
+        triggerToast(`✅ Assignment "${assignmentFile.name}" Submitted Successfully!`, "success"); // ✅ Replaced Alert
         setAssignmentFile(null); 
+
     } catch (err) {
         console.error(err);
-        alert("❌ Upload Failed. Please try again.");
+        triggerToast("❌ Upload Failed. Please try again.", "error"); // ✅ Replaced Alert
     } finally {
         setUploading(false);
     }
@@ -495,43 +556,18 @@ const CoursePlayer = () => {
 
   const renderContent = () => {
     if (!activeLesson) return <div className="text-white p-10 text-center">Select a lesson</div>;
-    
-    // 📝 1. NOTES
     if (activeLesson.type === "note") return <iframe src={getEmbedUrl(activeLesson.url)} width="100%" height="100%" className="bg-white border-0" allow="autoplay" />;
+    if (activeLesson.type === "quiz") return <div className="w-full h-full bg-slate-50 flex flex-col items-center justify-center p-4"><iframe src={getEmbedUrl(activeLesson.url)} width="100%" height="100%" frameBorder="0" className="rounded-xl shadow-sm border border-slate-200 bg-white max-w-4xl" allowFullScreen>Loading...</iframe></div>;
     
-    // ✅ 2. QUIZ 
-    if (activeLesson.type === "quiz") {
-        return (
-            <div className="w-full h-full bg-slate-50 flex flex-col items-center justify-center p-4">
-                <iframe src={getEmbedUrl(activeLesson.url)} width="100%" height="100%" frameBorder="0" className="rounded-xl shadow-sm border border-slate-200 bg-white max-w-4xl" allowFullScreen>Loading...</iframe>
-            </div>
-        );
-    }
-
-    // 🎥 3. VIDEO OR LIVE CLASS (Unified)
     if (activeLesson.type === "video" || activeLesson.type === "live_class") {
         const videoId = getYoutubeId(activeLesson.url);
         if (!videoId) return <div style={{color: "white", padding: "40px"}}>Invalid Video URL</div>;
-
-        const plyrSource = {
-            type: "video" as const, 
-            sources: [{ src: videoId, provider: "youtube" as const }],
-        };
-
-        return (
-            <div style={{ width: "100%", height: "100%", background: "black", display: "flex", alignItems: "center", justifyContent: "center" }}>
-               <div style={{ width: "100%", maxWidth: "1000px", borderRadius: "12px", overflow: "hidden", boxShadow: "0 20px 50px rgba(0,0,0,0.5)" }}>
-                  <style>{` .plyr__video-embed iframe { top: -50%; height: 200%; } :root { --plyr-color-main: #005EB8; } `}</style>
-                  <Plyr key={activeLesson.id} source={plyrSource} options={plyrOptions} />
-               </div>
-            </div>
-        );
+        const plyrSource = { type: "video" as const, sources: [{ src: videoId, provider: "youtube" as const }] };
+        return <div style={{ width: "100%", height: "100%", background: "black", display: "flex", alignItems: "center", justifyContent: "center" }}><div style={{ width: "100%", maxWidth: "1000px", borderRadius: "12px", overflow: "hidden", boxShadow: "0 20px 50px rgba(0,0,0,0.5)" }}><style>{` .plyr__video-embed iframe { top: -50%; height: 200%; } :root { --plyr-color-main: #005EB8; } `}</style><Plyr key={activeLesson.id} source={plyrSource} options={plyrOptions} /></div></div>;
     }
     
-    // 💻 4. CODE ARENA (Fixed: No Camera, Multi-Problem)
     if (activeLesson.type === "code_test") return <CodeCompiler lesson={activeLesson} />;
     
-    // 📂 5. ASSIGNMENT
     if (activeLesson.type === "assignment") {
       return (
         <div className="flex flex-col items-center justify-center h-full bg-[#F8FAFC] p-8 font-sans text-slate-800">
@@ -560,7 +596,6 @@ const CoursePlayer = () => {
         </div>
       );
     }
-    
     return <div className="text-white p-10 text-center">Select content from the sidebar</div>;
   };
 
@@ -570,9 +605,11 @@ const CoursePlayer = () => {
       return <CodingPlayer course={course} token={token} />;
   }
 
-  // --- STANDARD PLAYER RENDER (UNCHANGED) ---
+  // --- STANDARD PLAYER RENDER ---
   return (
-    <div className="flex h-screen w-screen overflow-hidden font-sans bg-slate-900">
+    <div className="flex h-screen w-screen overflow-hidden font-sans bg-slate-900 relative">
+      <ToastNotification toast={toast} setToast={setToast} /> {/* ✅ Toast Rendered */}
+      
       <div className="flex-1 flex flex-col h-full">
         <header className="h-16 bg-white border-b border-slate-200 flex items-center px-6 justify-between z-10">
           <div className="flex items-center gap-4">
@@ -594,26 +631,42 @@ const CoursePlayer = () => {
              {course?.modules.map((module: any, idx: number) => (
                 <div key={module.id} className="border-b border-slate-100">
                   <div onClick={() => toggleModule(module.id)} className="p-4 bg-slate-50 cursor-pointer flex justify-between items-center hover:bg-slate-100 transition-colors">
-                    <div><div className="text-[11px] font-bold text-slate-500 uppercase">Section {idx + 1}</div><div className="text-sm font-semibold text-slate-800">{module.title}</div></div>
+                    <div className="flex items-center gap-3">
+                        {module.is_completed ? (
+                            <div className="bg-[#87C232] rounded-full p-1 text-white"><CheckCircle size={20} fill="white" className="text-[#87C232]" /></div>
+                        ) : (
+                            <div className="w-8 h-8 rounded-full bg-slate-200 flex items-center justify-center text-xs font-bold text-slate-500">{idx + 1}</div>
+                        )}
+                        <div>
+                            <div className="text-[11px] font-bold text-slate-500 uppercase">{module.is_completed ? "Completed" : `Section ${idx + 1}`}</div>
+                            <div className={`text-sm font-semibold ${module.is_completed ? "text-slate-400 line-through" : "text-slate-800"}`}>{module.title}</div>
+                        </div>
+                    </div>
                     {expandedModules.includes(module.id) ? <ChevronDown size={18} color="#64748b" /> : <ChevronRight size={18} color="#64748b" />}
                   </div>
                   {expandedModules.includes(module.id) && (
                     <div className="animate-fade-in">
                       {module.lessons.map((lesson: any) => {
-                        const isActive = activeLesson?.id === lesson.id;
-                        return (
-                          <div key={lesson.id} onClick={() => setActiveLesson(lesson)} className={`flex items-center gap-3 p-3 pl-6 cursor-pointer border-l-4 transition-all ${isActive ? 'bg-blue-50 border-blue-600' : 'bg-white border-transparent hover:bg-slate-50'}`}>
-                            <div className={isActive ? "text-blue-600" : "text-slate-400"}>
-                              {lesson.type.includes("video") && <PlayCircle size={16} />}
-                              {lesson.type === "note" && <FileText size={16} />}
-                              {lesson.type === "quiz" && <HelpCircle size={16} />} 
-                              {lesson.type.includes("code") && <Code size={16} />}
-                              {lesson.type === "assignment" && <UploadCloud size={16} />}
-                              {lesson.type === "live_class" && <Radio size={16} className={isActive ? "text-red-600" : "text-slate-400"} />}
-                            </div>
-                            <div className={`text-sm flex-1 ${isActive ? "text-blue-600 font-semibold" : "text-slate-600"}`}>{lesson.title}</div>
-                          </div>
-                        );
+                         const isActive = activeLesson?.id === lesson.id;
+                         return (
+                             <div key={lesson.id} onClick={() => setActiveLesson(lesson)} className={`flex items-center gap-3 p-3 pl-12 cursor-pointer border-l-4 transition-all ${isActive ? 'bg-blue-50 border-blue-600' : 'bg-white border-transparent hover:bg-slate-50'}`}>
+                                 <div className={isActive ? "text-blue-600" : "text-slate-400"}>
+                                     {lesson.is_completed ? (
+                                          <CheckCircle size={16} className="text-[#87C232]" fill="#ecfccb" />
+                                     ) : (
+                                         <>
+                                             {lesson.type.includes("video") && <PlayCircle size={16} />}
+                                             {lesson.type === "note" && <FileText size={16} />}
+                                             {lesson.type === "quiz" && <HelpCircle size={16} />} 
+                                             {lesson.type.includes("code") && <Code size={16} />}
+                                             {lesson.type === "assignment" && <UploadCloud size={16} />}
+                                             {lesson.type === "live_class" && <Radio size={16} />}
+                                         </>
+                                     )}
+                                 </div>
+                                 <div className={`text-sm flex-1 ${isActive ? "text-blue-600 font-semibold" : "text-slate-600"} ${lesson.is_completed ? "line-through text-slate-400 decoration-slate-300" : ""}`}>{lesson.title}</div>
+                             </div>
+                         );
                       })}
                     </div>
                   )}

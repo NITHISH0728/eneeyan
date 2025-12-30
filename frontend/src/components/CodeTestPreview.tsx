@@ -7,7 +7,6 @@ import {
 } from "lucide-react";
 
 // --- ⚙️ JUDGE0 API CONFIG ---
-// ⚠️ GET A FREE KEY HERE: https://rapidapi.com/judge0-official/api/judge0-ce
 const JUDGE0_API_KEY = "YOUR_RAPID_API_KEY_HERE"; 
 const JUDGE0_URL = "https://judge0-ce.p.rapidapi.com/submissions";
 
@@ -23,9 +22,25 @@ export const CodeTestPreview = ({ lesson }: { lesson: any }) => {
   const [isRunning, setIsRunning] = useState(false);
   const [testResults, setTestResults] = useState<any[]>([]);
 
+  // ✅ NEW: Toast State
+  const [toast, setToast] = useState<{ show: boolean; message: string; type: "success" | "error" }>({ 
+    show: false, message: "", type: "success" 
+  });
+
+  // ✅ NEW: Toast Helper Function
+  const triggerToast = (message: string, type: "success" | "error" = "success") => {
+    setToast({ show: true, message, type });
+    setTimeout(() => setToast(prev => ({ ...prev, show: false })), 3000);
+  };
+
   // 🏃 RUN CODE (Single Execution)
   const runCode = async () => {
-    if (!config.testCases.length) return alert("No test cases defined.");
+    // 🚫 REPLACED ALERT WITH PROFESSIONAL TOAST
+    if (!config.testCases.length) {
+        triggerToast("No test cases defined.", "error");
+        return;
+    }
+
     setIsRunning(true);
     setConsoleOutput("Compiling & Executing...");
 
@@ -43,6 +58,12 @@ export const CodeTestPreview = ({ lesson }: { lesson: any }) => {
 
   // 🧪 RUN ALL TESTS (Batch Execution)
   const runAllTests = async () => {
+    // 🚫 SAFETY CHECK
+    if (!config.testCases.length) {
+        triggerToast("No test cases defined.", "error");
+        return;
+    }
+
     setIsRunning(true);
     setConsoleOutput("Running all test cases...");
     const results = [];
@@ -62,11 +83,13 @@ export const CodeTestPreview = ({ lesson }: { lesson: any }) => {
     setTestResults(results);
     setIsRunning(false);
     setConsoleOutput(`Execution Complete. Passed: ${results.filter((r:any) => r.passed).length}/${results.length}`);
+    
+    // ✅ OPTIONAL: Success Toast on Completion
+    triggerToast("All tests executed!", "success");
   };
 
-  // 🔌 JUDGE0 API HELPER
+  // 🔌 JUDGE0 API HELPER (Unchanged)
   const executeJudge0 = async (sourceCode: string, stdin: string) => {
-    // 1. Submit Code
     const options = {
       method: 'POST',
       url: JUDGE0_URL,
@@ -77,7 +100,7 @@ export const CodeTestPreview = ({ lesson }: { lesson: any }) => {
         'X-RapidAPI-Host': 'judge0-ce.p.rapidapi.com'
       },
       data: {
-        language_id: 63, // 63 = Node.js, 71 = Python, 62 = Java
+        language_id: 63,
         source_code: btoa(sourceCode),
         stdin: btoa(stdin)
       }
@@ -86,7 +109,6 @@ export const CodeTestPreview = ({ lesson }: { lesson: any }) => {
     const subRes = await axios.request(options);
     const token = subRes.data.token;
 
-    // 2. Poll for Results
     return new Promise<any>((resolve, reject) => {
         const checkStatus = async () => {
             try {
@@ -95,9 +117,9 @@ export const CodeTestPreview = ({ lesson }: { lesson: any }) => {
                     headers: { 'X-RapidAPI-Key': JUDGE0_API_KEY, 'X-RapidAPI-Host': 'judge0-ce.p.rapidapi.com' }
                 });
                 
-                if (res.data.status.id <= 2) { // Processing
+                if (res.data.status.id <= 2) {
                     setTimeout(checkStatus, 1000);
-                } else { // Finished
+                } else {
                     resolve({
                         stdout: res.data.stdout ? atob(res.data.stdout) : null,
                         stderr: res.data.stderr ? atob(res.data.stderr) : null,
@@ -111,7 +133,7 @@ export const CodeTestPreview = ({ lesson }: { lesson: any }) => {
   };
 
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gridTemplateRows: "1fr 1fr", height: "100%", gap: "16px", padding: "16px", background: "#F1F5F9", fontFamily: "'Inter', sans-serif" }}>
+    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gridTemplateRows: "1fr 1fr", height: "100%", gap: "16px", padding: "16px", background: "#F1F5F9", fontFamily: "'Inter', sans-serif", position: "relative" }}>
       
       {/* 🟦 TOP LEFT: PROBLEM DESCRIPTION */}
       <div style={cardStyle}>
@@ -195,6 +217,26 @@ export const CodeTestPreview = ({ lesson }: { lesson: any }) => {
             </button>
         </div>
       </div>
+
+      {/* ✅ NEW: TOAST NOTIFICATION COMPONENT */}
+      {toast.show && (
+        <div style={{ 
+            position: "absolute", top: "20px", right: "20px", 
+            background: "white", padding: "12px 20px", borderRadius: "8px", 
+            boxShadow: "0 10px 25px -5px rgba(0,0,0,0.1)", 
+            borderLeft: `5px solid ${toast.type === "success" ? "#16a34a" : "#ef4444"}`,
+            display: "flex", alignItems: "center", gap: "10px", zIndex: 50,
+            animation: "slideIn 0.3s ease-out"
+        }}>
+            {toast.type === "success" ? <CheckCircle size={20} color="#16a34a" /> : <AlertTriangle size={20} color="#ef4444" />}
+            <div>
+                <h4 style={{ margin: 0, fontSize: "14px", fontWeight: "700", color: "#1e293b" }}>
+                    {toast.type === "success" ? "Success" : "Error"}
+                </h4>
+                <p style={{ margin: 0, fontSize: "12px", color: "#64748b" }}>{toast.message}</p>
+            </div>
+        </div>
+      )}
     </div>
   );
 };

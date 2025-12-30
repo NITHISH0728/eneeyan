@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import axios from "axios";
-import { Trash2, User, Search, AlertCircle, X, Calendar, BookOpen } from "lucide-react";
+import { Trash2, User, Search, AlertCircle, X, Calendar, BookOpen, CheckCircle, AlertTriangle } from "lucide-react"; // ✅ Added Icons
 
 interface Student {
   id: number;
@@ -18,6 +18,17 @@ const StudentManagement = () => {
   // Delete Modal State
   const [studentToDelete, setStudentToDelete] = useState<Student | null>(null);
 
+  // ✅ NEW: Toast State
+  const [toast, setToast] = useState<{ show: boolean; message: string; type: "success" | "error" }>({ 
+    show: false, message: "", type: "success" 
+  });
+
+  // ✅ NEW: Toast Helper
+  const triggerToast = (message: string, type: "success" | "error" = "success") => {
+    setToast({ show: true, message, type });
+    setTimeout(() => setToast(prev => ({ ...prev, show: false })), 3000);
+  };
+
   // 🎨 THEME
   const brand = { 
     blue: "#005EB8", 
@@ -25,7 +36,8 @@ const StudentManagement = () => {
     textLight: "#64748b",
     cardBg: "#F8FAFC",
     border: "#cbd5e1",
-    danger: "#ef4444"
+    danger: "#ef4444",
+    green: "#87C232" // Added green for success toast
   };
 
   useEffect(() => {
@@ -35,8 +47,6 @@ const StudentManagement = () => {
   const fetchStudents = async () => {
     try {
       const token = localStorage.getItem("token");
-      // Assuming you have/will add this endpoint. 
-      // If not, it will just return empty for now without breaking the UI.
       const res = await axios.get("http://127.0.0.1:8000/api/v1/admin/students", {
         headers: { Authorization: `Bearer ${token}` }
       });
@@ -61,9 +71,12 @@ const StudentManagement = () => {
       });
       setStudents(students.filter(s => s.id !== studentToDelete.id));
       setStudentToDelete(null);
-      alert("Student removed successfully.");
+      
+      // ✅ REPLACED ALERT WITH TOAST
+      triggerToast("Student removed successfully.", "success");
     } catch (err) {
-      alert("Failed to remove student.");
+      // ✅ REPLACED ALERT WITH TOAST
+      triggerToast("Failed to remove student.", "error");
     }
   };
 
@@ -73,7 +86,7 @@ const StudentManagement = () => {
   );
 
   return (
-    <div style={{ padding: "40px", maxWidth: "1200px", margin: "0 auto" }}>
+    <div style={{ padding: "40px", maxWidth: "1200px", margin: "0 auto", position: "relative" }}>
       
       {/* HEADER */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "30px" }}>
@@ -174,6 +187,29 @@ const StudentManagement = () => {
               <button onClick={handleDelete} style={{ flex: 1, padding: "12px", background: brand.danger, border: "none", borderRadius: "8px", fontWeight: "700", color: "white", cursor: "pointer" }}>Yes, Remove</button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* ✅ NEW: TOAST NOTIFICATION COMPONENT */}
+      {toast.show && (
+        <div style={{ 
+            position: "fixed", top: "20px", right: "20px", 
+            background: "white", padding: "16px 24px", borderRadius: "12px", 
+            boxShadow: "0 10px 30px -5px rgba(0,0,0,0.15)", 
+            borderLeft: `6px solid ${toast.type === "success" ? brand.green : "#ef4444"}`,
+            display: "flex", alignItems: "center", gap: "12px", zIndex: 9999,
+            animation: "slideIn 0.3s ease-out"
+        }}>
+            {toast.type === "success" ? <CheckCircle size={24} color={brand.green} /> : <AlertTriangle size={24} color="#ef4444" />}
+            <div>
+                <h4 style={{ margin: "0", fontSize: "14px", fontWeight: "700", color: brand.textMain }}>
+                    {toast.type === "success" ? "Success" : "Error"}
+                </h4>
+                <p style={{ margin: 0, fontSize: "13px", color: brand.textLight }}>{toast.message}</p>
+            </div>
+            <button onClick={() => setToast(prev => ({ ...prev, show: false }))} style={{ background: "none", border: "none", cursor: "pointer", marginLeft: "10px", color: "#94a3b8" }}>
+                <X size={16} />
+            </button>
         </div>
       )}
 

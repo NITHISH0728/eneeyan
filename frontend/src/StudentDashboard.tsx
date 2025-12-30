@@ -3,12 +3,12 @@ import axios from "axios";
 import { useNavigate } from "react-router-dom";
 import Editor from "@monaco-editor/react"; 
 import { 
-  LayoutDashboard, BookOpen, Compass, Award, Settings, LogOut, 
-  Clock, CreditCard, X, Lock, Save, CheckCircle, AlertCircle,
-  Code, Play, Terminal, Monitor, AlertTriangle, ChevronRight,
-  Menu, Sparkles, Zap, Cpu, User, Download, EyeOff, PlayCircle
+  LayoutDashboard, BookOpen, Compass, Award, LogOut, 
+  CheckCircle, AlertTriangle, X, Save, 
+  Code, Play, Monitor, ChevronRight,
+  Menu, Sparkles, Zap, User, PlayCircle, Trophy, Lock, CreditCard, Clock
 } from "lucide-react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion } from "framer-motion";
 
 // ✅ AI IMPORTS
 import * as tf from "@tensorflow/tfjs";
@@ -19,27 +19,34 @@ import "@tensorflow/tfjs-backend-webgl";
 interface Course { id: number; title: string; description: string; price: number; image_url: string; instructor_id: number; }
 interface CodeTest { id: number; title: string; time_limit: number; problems: any[]; completed?: boolean; }
 
+// --- RAZORPAY SCRIPT LOADER ---
+const loadRazorpayScript = () => {
+    return new Promise((resolve) => {
+        const script = document.createElement("script");
+        script.src = "https://checkout.razorpay.com/v1/checkout.js";
+        script.onload = () => resolve(true);
+        script.onerror = () => resolve(false);
+        document.body.appendChild(script);
+    });
+};
+
 const StudentDashboard = () => {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState("home"); 
   const [availableCourses, setAvailableCourses] = useState<Course[]>([]);
   const [enrolledCourses, setEnrolledCourses] = useState<Course[]>([]);
   const [loading, setLoading] = useState(true);
-  const [downloadingId, setDownloadingId] = useState<number | null>(null);
-  
-  // Sidebar State
+  const [currentProgress, setCurrentProgress] = useState({ percent: 0, completed: 0, total: 0 });
   const [collapsed, setCollapsed] = useState(false);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   
-  const userData = { name: "Student", email: "student@iqmath.com" };
-
   // Modal & Settings
   const [showModal, setShowModal] = useState(false);
   const [selectedCourse, setSelectedCourse] = useState<Course | null>(null);
   const [processing, setProcessing] = useState(false);
-  const [newPassword, setNewPassword] = useState("");
-  const [savingSettings, setSavingSettings] = useState(false);
-  const [toast, setToast] = useState({ show: false, message: "", type: "success" });
+  const [toast, setToast] = useState<{ show: boolean; message: string; type: "success" | "error" }>({ 
+    show: false, message: "", type: "success" 
+  });
 
   // --- CODE ARENA STATES ---
   const [codeTests, setCodeTests] = useState<CodeTest[]>([]);
@@ -47,11 +54,11 @@ const StudentDashboard = () => {
   const [passKeyInput, setPassKeyInput] = useState("");
   const [showPassKeyModal, setShowPassKeyModal] = useState<number | null>(null);
   
-  // --- 🛡️ PROCTORING STATES (UPDATED) ---
+  // --- 🛡️ PROCTORING STATES ---
   const [timeLeft, setTimeLeft] = useState(0);
-  const [warnings, setWarnings] = useState(0); // Cumulative warnings (Tab + Fullscreen)
-  const [violationType, setViolationType] = useState<string | null>(null); // "fullscreen" or "tab"
+  const [warnings, setWarnings] = useState(0); 
   const [faceStatus, setFaceStatus] = useState<"ok" | "missing" | "multiple">("ok");
+  const [isFullScreenViolation, setIsFullScreenViolation] = useState(false);
   
   // Problem & Code State
   const [currentProblemIndex, setCurrentProblemIndex] = useState(0);
@@ -61,8 +68,6 @@ const StudentDashboard = () => {
   
   const [consoleOutput, setConsoleOutput] = useState("Ready to execute...");
   const [executionStatus, setExecutionStatus] = useState("idle"); 
-  const [showHiddenCaseBtn, setShowHiddenCaseBtn] = useState(false);
-  const [viewHiddenCase, setViewHiddenCase] = useState(false);
   
   const videoRef = useRef<HTMLVideoElement>(null);
 
@@ -84,7 +89,12 @@ const StudentDashboard = () => {
     { id: 63, name: "JavaScript (Node.js)", value: "javascript" },
   ];
 
-  // ... (EFFECTS UNCHANGED) ...
+  // ✅ Toast Helper
+  const triggerToast = (message: string, type: "success" | "error" = "success") => {
+    setToast({ show: true, message, type });
+    setTimeout(() => setToast(prev => ({ ...prev, show: false })), 3000);
+  };
+
   useEffect(() => {
     const role = localStorage.getItem("role");
     if (role === "instructor") { navigate("/dashboard"); return; }
@@ -92,104 +102,97 @@ const StudentDashboard = () => {
     fetchCodeTests();
   }, [activeTab]);
 
-  // 🛡️🛡️🛡️ CORE PROCTORING LOGIC 🛡️🛡️🛡️
+  useEffect(() => {
+    if (enrolledCourses.length > 0) fetchCourseProgress(enrolledCourses[0].id);
+  }, [enrolledCourses]);
+
+  const fetchCourseProgress = async (courseId: number) => {
+    try {
+        const token = localStorage.getItem("token");
+        const res = await axios.get(`http://127.0.0.1:8000/api/v1/courses/${courseId}/player`, {
+            headers: { Authorization: `Bearer ${token}` }
+        });
+        const modules = res.data.modules || [];
+        const total = modules.length;
+        const completed = modules.filter((m: any) => m.is_completed).length;
+        const percent = total === 0 ? 0 : Math.round((completed / total) * 100);
+        setCurrentProgress({ percent, completed, total });
+    } catch (err) { console.error("Failed to fetch progress", err); }
+  };
+
+  // 🛡️ MILITARY GRADE PROCTORING LOGIC
   useEffect(() => {
       let aiInterval: any;
       if (activeTest) {
-          // 1. Restore Warnings from LocalStorage
           const savedWarns = localStorage.getItem(`warns_${activeTest.id}`);
           if (savedWarns) setWarnings(parseInt(savedWarns));
-
-          // 2. Restore Code
           const savedSolutions = localStorage.getItem(`sols_${activeTest.id}`);
           if (savedSolutions) {
               const parsed = JSON.parse(savedSolutions);
               setSolutions(parsed);
               setUserCode(parsed[0] || "# Write your solution here...");
-          } else {
-              setUserCode("# Write your solution here...");
-          }
+          } else setUserCode("# Write your solution here...");
 
-          // 3. Timer
           const timer = setInterval(() => {
-              setTimeLeft(prev => {
-                  if (prev <= 1) { submitTest(); return 0; }
-                  return prev - 1;
-              });
+              setTimeLeft(prev => { if (prev <= 1) { submitTest(); return 0; } return prev - 1; });
           }, 1000);
 
-          // 🚨 HELPER: TRIGGER VIOLATION
           const triggerViolation = (type: string) => {
-              // Get current count directly from storage to avoid state stale closures
-              const currentCount = parseInt(localStorage.getItem(`warns_${activeTest.id}`) || "0");
-              const newCount = currentCount + 1;
+              const currentCount = parseInt(localStorage.getItem(`warns_${activeTest.id}`) || "0") + 1;
+              localStorage.setItem(`warns_${activeTest.id}`, currentCount.toString());
+              setWarnings(currentCount);
               
-              localStorage.setItem(`warns_${activeTest.id}`, newCount.toString());
-              setWarnings(newCount);
-              setViolationType(type); // Show Overlay
-
-              if (newCount > 2) {
-                  // ❌ FINAL TERMINATION
-                  submitTest(true); // Pass 'true' for disqualified
-                  alert("⛔ TEST TERMINATED: You have exceeded the violation limit (Tab Switching/Full Screen). Your test has been submitted automatically.");
+              if (currentCount > 2) { 
+                  submitTest(true); 
+                  triggerToast(`⛔ TEST TERMINATED: ${type}`, "error");
               }
           };
 
-          // 🚨 DETECTOR 1: FULL SCREEN EXIT
-          const handleFullScreenChange = () => {
-              if (!document.fullscreenElement) {
-                  triggerViolation("Full Screen Exited");
-              }
+          const handleFullScreenChange = () => { 
+             if (!document.fullscreenElement) {
+                setIsFullScreenViolation(true);
+                triggerViolation("Full Screen Exited"); 
+             } else {
+                setIsFullScreenViolation(false);
+             }
           };
-
-          // 🚨 DETECTOR 2: TAB SWITCHING (VISIBILITY CHANGE)
-          const handleVisibilityChange = () => {
-              if (document.hidden) {
-                  triggerViolation("Tab Switching / Focus Lost");
-              }
+          
+          const handleVisibilityChange = () => { 
+            if (document.hidden) triggerViolation("Tab Switch Detected"); 
           };
 
           document.addEventListener("fullscreenchange", handleFullScreenChange);
           document.addEventListener("visibilitychange", handleVisibilityChange);
 
-          // 🤖 AI FACE DETECTION
           const setupAI = async () => {
               try {
                   await tf.setBackend('webgl'); 
                   const loadedModel = await blazeface.load();
-                  if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+                  if (navigator.mediaDevices.getUserMedia) {
                       const stream = await navigator.mediaDevices.getUserMedia({ video: true });
                       if (videoRef.current) {
                           videoRef.current.srcObject = stream;
                           videoRef.current.onloadeddata = () => {
-                              startDetection(loadedModel);
+                              aiInterval = setInterval(async () => {
+                                  if (videoRef.current && videoRef.current.readyState === 4) {
+                                      const predictions = await loadedModel.estimateFaces(videoRef.current, false);
+                                      if (predictions.length === 0) setFaceStatus("missing");
+                                      else if (predictions.length > 1) setFaceStatus("multiple"); 
+                                      else setFaceStatus("ok");
+                                  }
+                              }, 1000);
                           };
                       }
                   }
-              } catch(err) { console.error("AI Init Failed", err); }
+              } catch(err) {}
           };
           setupAI();
 
-          const startDetection = (loadedModel: any) => {
-              aiInterval = setInterval(async () => {
-                  if (videoRef.current && videoRef.current.readyState === 4) {
-                      const predictions = await loadedModel.estimateFaces(videoRef.current, false);
-                      if (predictions.length === 0) setFaceStatus("missing");
-                      else if (predictions.length > 1) setFaceStatus("multiple"); 
-                      else setFaceStatus("ok");
-                  }
-              }, 500); 
-          };
-
           return () => {
-              clearInterval(timer);
-              clearInterval(aiInterval);
+              clearInterval(timer); clearInterval(aiInterval);
               document.removeEventListener("fullscreenchange", handleFullScreenChange);
               document.removeEventListener("visibilitychange", handleVisibilityChange);
-              if(videoRef.current && videoRef.current.srcObject) {
-                  const stream = videoRef.current.srcObject as MediaStream;
-                  stream.getTracks().forEach(track => track.stop());
-              }
+              if(videoRef.current?.srcObject) (videoRef.current.srcObject as MediaStream).getTracks().forEach(t => t.stop());
           };
       }
   }, [activeTest]);
@@ -205,341 +208,449 @@ const StudentDashboard = () => {
       setAvailableCourses(allRes.data.filter((c: Course) => !myCourseIds.has(c.id)));
       setEnrolledCourses(myRes.data);
     } catch (err: any) { 
-        if(err.response && err.response.status === 401) { localStorage.clear(); navigate("/"); }
+        if(err.response?.status === 401) { localStorage.clear(); navigate("/"); }
     } finally { setLoading(false); }
   };
 
   const fetchCodeTests = async () => {
-      const token = localStorage.getItem("token");
       try {
-          const res = await axios.get("http://127.0.0.1:8000/api/v1/code-tests", { headers: { Authorization: `Bearer ${token}` } });
+          const res = await axios.get("http://127.0.0.1:8000/api/v1/code-tests", { headers: { Authorization: `Bearer ${localStorage.getItem("token")}` } });
           setCodeTests(res.data);
       } catch(err) { console.error(err); }
   };
 
-  // ✅ START TEST LOGIC (Includes Check for Disqualification)
   const handleStartTest = async () => {
       const token = localStorage.getItem("token");
       try {
-          // 1. Attempt Fullscreen Optimistically
-          if (document.documentElement.requestFullscreen) { 
-              await document.documentElement.requestFullscreen().catch(() => console.log("Fullscreen optional")); 
-          }
-
-          const formData = new FormData(); 
-          formData.append("pass_key", passKeyInput);
-          
-          // 2. Verify Key
+          if (document.documentElement.requestFullscreen) await document.documentElement.requestFullscreen().catch(() => {});
+          const formData = new FormData(); formData.append("pass_key", passKeyInput);
           const res = await axios.post(`http://127.0.0.1:8000/api/v1/code-tests/${showPassKeyModal}/start`, formData, { headers: { Authorization: `Bearer ${token}` } });
           
-          // 3. 🔒 CHECK IF DISQUALIFIED PREVIOUSLY
           const prevWarns = localStorage.getItem(`warns_${res.data.id}`);
           if (prevWarns && parseInt(prevWarns) > 2) { 
-              // Exit fullscreen if entered
               if (document.fullscreenElement) document.exitFullscreen();
-              // Show generic error or specific one as requested
-              triggerToast("Invalid Pass Key (Test Terminated Previously)", "error");
-              return; 
+              triggerToast("Test Terminated Previously", "error"); return; 
           }
-          
-          setActiveTest(res.data);
-          setTimeLeft(res.data.time_limit * 60);
-          setShowPassKeyModal(null);
-          setWarnings(prevWarns ? parseInt(prevWarns) : 0);
-
+          setActiveTest(res.data); setTimeLeft(res.data.time_limit * 60); setShowPassKeyModal(null); setWarnings(prevWarns ? parseInt(prevWarns) : 0);
       } catch(err) { 
           if (document.fullscreenElement) document.exitFullscreen();
           triggerToast("Invalid Pass Key", "error"); 
       }
   };
 
-  const handleDownloadCertificate = async (id: number, title: string) => { 
-    setDownloadingId(id); 
-    try {
-        const token = localStorage.getItem("token");
-        const response = await axios.get(`http://127.0.0.1:8000/api/v1/generate-pdf/${id}`, { headers: { Authorization: `Bearer ${token}` }, responseType: 'blob' });
-        const url = window.URL.createObjectURL(new Blob([response.data]));
-        const link = document.createElement('a');
-        link.href = url;
-        link.setAttribute('download', `Certificate-${title.replace(/\s+/g, "_")}.pdf`);
-        document.body.appendChild(link);
-        link.click();
-        link.remove();
-        window.URL.revokeObjectURL(url);
-        triggerToast("Certificate Downloaded Successfully!");
-    } catch (err) { triggerToast("Failed to generate certificate.", "error"); } finally { setDownloadingId(null); }
+  const returnToFullScreen = async () => {
+     try {
+         if (document.documentElement.requestFullscreen) {
+             await document.documentElement.requestFullscreen();
+             setIsFullScreenViolation(false);
+         }
+     } catch(e) { console.log(e); }
   };
 
-  const handleSave = () => { if(!activeTest) return; const newSolutions = { ...solutions, [currentProblemIndex]: userCode }; setSolutions(newSolutions); localStorage.setItem(`sols_${activeTest.id}`, JSON.stringify(newSolutions)); triggerToast("✅ Code Saved! You can move to other questions.", "success"); };
-  const handleRun = async () => { setExecutionStatus("running"); setConsoleOutput("🚀 Sending to compiler..."); setShowHiddenCaseBtn(false); setViewHiddenCase(false); const currentProb = activeTest?.problems[currentProblemIndex]; const testCases = currentProb ? JSON.parse(currentProb.test_cases) : []; const sampleInput = testCases[0]?.input || "5"; try { const token = localStorage.getItem("token"); const res = await axios.post("http://127.0.0.1:8000/api/v1/execute", { source_code: userCode, language_id: language, stdin: sampleInput }, { headers: { Authorization: `Bearer ${token}` } }); const output = res.data.stdout || res.data.stderr || res.data.compile_output || "No output"; if (res.data.status?.id === 3) { setExecutionStatus("success"); setConsoleOutput(`✅ Execution Successful:\n\n${output}`); } else { setExecutionStatus("error"); setConsoleOutput(`❌ Execution Error (Status: ${res.data.status?.description})\n\n${output}`); setShowHiddenCaseBtn(true); } } catch (err: any) { setExecutionStatus("error"); setConsoleOutput("❌ Network/Compiler Error.\n" + (err.response?.data?.detail || err.message)); } };
-  const switchQuestion = (index: number) => { handleSave(); setCurrentProblemIndex(index); setUserCode(solutions[index] || "# Write your solution here..."); setConsoleOutput("Ready to execute..."); setExecutionStatus("idle"); setShowHiddenCaseBtn(false); setViewHiddenCase(false); };
-  
-  // ✅ RESUME TEST (After Warning)
-  const handleResumeTest = () => {
-      // Re-request fullscreen
-      document.documentElement.requestFullscreen().catch(() => {});
-      setViolationType(null); // Hide overlay
+  const handleSave = () => { 
+      if(!activeTest) return; 
+      const newSolutions = { ...solutions, [currentProblemIndex]: userCode }; 
+      setSolutions(newSolutions); 
+      localStorage.setItem(`sols_${activeTest.id}`, JSON.stringify(newSolutions)); 
+      triggerToast("✅ Code Saved!", "success"); 
+  };
+
+  // EXECUTION LOGIC
+  const handleRun = async () => { 
+      setExecutionStatus("running"); 
+      setConsoleOutput("🚀 Job queued... Waiting for compiler..."); 
+      
+      const currentProb = activeTest?.problems[currentProblemIndex]; 
+      const testCases = currentProb ? JSON.parse(currentProb.test_cases) : []; 
+      const sampleInput = testCases[0]?.input || "5"; 
+      const expectedOutput = testCases[0]?.output || ""; 
+
+      try { 
+          const res = await axios.post("http://127.0.0.1:8000/api/v1/execute", 
+            { source_code: userCode, language_id: language, stdin: sampleInput }, 
+            { headers: { Authorization: `Bearer ${localStorage.getItem("token")}` } }
+          ); 
+          const taskId = res.data.task_id;
+          const intervalId = setInterval(async () => {
+              try {
+                  const statusRes = await axios.get(`http://127.0.0.1:8000/api/v1/result/${taskId}`);
+                  if (statusRes.data.status === "completed") {
+                      clearInterval(intervalId);
+                      const result = statusRes.data.data;
+                      const rawOutput = result.output || "";
+                      if (rawOutput.trim() === expectedOutput.trim()) {
+                          setExecutionStatus("success"); 
+                          setConsoleOutput(`✅ Success! Test Case Passed.\n\nInput: ${sampleInput}\nOutput: ${rawOutput}`); 
+                      } else {
+                          setExecutionStatus("error"); 
+                          setConsoleOutput(`❌ Wrong Answer:\n\nInput:    ${sampleInput}\nExpected: ${expectedOutput}\nActual:   ${rawOutput}`); 
+                      }
+                  } else if (statusRes.data.status === "failed") {
+                      clearInterval(intervalId);
+                      setExecutionStatus("error");
+                      setConsoleOutput("❌ System Error during execution.");
+                  }
+              } catch (err) {
+                  clearInterval(intervalId);
+                  setExecutionStatus("error");
+              }
+          }, 1000);
+      } catch (err: any) { 
+          setExecutionStatus("error"); 
+          setConsoleOutput("❌ Failed to queue job."); 
+      } 
+  };
+
+  const switchQuestion = (index: number) => { 
+      handleSave(); 
+      setCurrentProblemIndex(index); 
+      setUserCode(solutions[index] || "# Write solution..."); 
+      setConsoleOutput("Ready..."); 
+      setExecutionStatus("idle"); 
   };
 
   const submitTest = async (disqualified = false) => { 
-      const token = localStorage.getItem("token"); 
       if(!activeTest) return; 
       try { 
-          const timeSpent = Math.floor((activeTest.time_limit * 60 - timeLeft) / 60); 
           await axios.post("http://127.0.0.1:8000/api/v1/code-tests/submit", { 
-              test_id: activeTest.id, 
-              score: disqualified ? 0 : (executionStatus === "success" ? 100 : 40), // 0 Score if disqualified
-              problems_solved: Object.keys(solutions).length, 
-              time_taken: `${timeSpent} mins` 
-          }, { headers: { Authorization: `Bearer ${token}` } }); 
-          
-          setActiveTest(null); 
-          // Note: We DO NOT remove 'warns_{id}' so we can block re-entry
-          localStorage.removeItem(`sols_${activeTest.id}`); 
-          
+              test_id: activeTest.id, score: disqualified ? 0 : (executionStatus === "success" ? 100 : 40), 
+              problems_solved: Object.keys(solutions).length, time_taken: "Finished" 
+          }, { headers: { Authorization: `Bearer ${localStorage.getItem("token")}` } }); 
+          setActiveTest(null); localStorage.removeItem(`sols_${activeTest.id}`); 
           if(document.fullscreenElement) document.exitFullscreen(); 
-          triggerToast(disqualified ? "Test Terminated due to Violations." : "Test Submitted Successfully!", disqualified ? "error" : "success"); 
-      } catch(err) { console.error(err); } 
+          triggerToast(disqualified ? "Test Terminated." : "Test Submitted Successfully!", disqualified ? "error" : "success"); 
+      } catch(err) {} 
   };
-  
-  const triggerToast = (message: string, type: "success" | "error" = "success") => { setToast({ show: true, message, type }); setTimeout(() => setToast({ ...toast, show: false }), 3000); };
   
   const handleFreeEnroll = async (courseId: number) => {
       setProcessing(true);
       try {
-          const token = localStorage.getItem("token");
-          await axios.post(`http://127.0.0.1:8000/api/v1/enroll/${courseId}`, 
-              { type: "paid" }, 
-              { headers: { Authorization: `Bearer ${token}` } }
-          );
-          triggerToast("🎉 Enrolled successfully!", "success");
-          fetchData(); 
-          setActiveTab("learning");
+          await axios.post(`http://127.0.0.1:8000/api/v1/enroll/${courseId}`, { type: "paid" }, { headers: { Authorization: `Bearer ${localStorage.getItem("token")}` } });
+          triggerToast("🎉 Enrolled!", "success"); fetchData(); setActiveTab("learning");
+      } catch (err) { triggerToast("Enrollment failed.", "error"); } finally { setProcessing(false); }
+  };
+
+  // ✅ NEW: HANDLE PAYMENT OR TRIAL
+  const handleEnrollStrategy = async (type: "trial" | "paid") => {
+      if (!selectedCourse) return;
+      setProcessing(true);
+
+      try {
+          if (type === "trial") {
+              // --- 1. START FREE TRIAL (Direct API Call) ---
+              await axios.post(`http://127.0.0.1:8000/api/v1/enroll/${selectedCourse.id}`, 
+                { type: "trial" }, 
+                { headers: { Authorization: `Bearer ${localStorage.getItem("token")}` } }
+              );
+              triggerToast(`🎉 Free Trial Started for ${selectedCourse.title}!`, "success");
+              fetchData(); setShowModal(false); setActiveTab("learning");
+          } else {
+              // --- 2. BUY LIFETIME ACCESS (Razorpay) ---
+              const isLoaded = await loadRazorpayScript();
+              if (!isLoaded) { triggerToast("SDK Failed to load", "error"); return; }
+
+              const token = localStorage.getItem("token");
+              // Create Order
+              const orderRes = await axios.post("http://127.0.0.1:8000/api/v1/create-order", 
+                  { amount: selectedCourse.price }, 
+                  { headers: { Authorization: `Bearer ${token}` } }
+              );
+
+              const options = {
+                  key: import.meta.env.VITE_RAZORPAY_KEY_ID, 
+                  amount: orderRes.data.amount,
+                  currency: orderRes.data.currency,
+                  name: "iQmath Pro",
+                  description: `Unlock ${selectedCourse.title}`,
+                  order_id: orderRes.data.id,
+                  handler: async function (response: any) {
+                      // Verify Payment & Enroll
+                      await axios.post(`http://127.0.0.1:8000/api/v1/enroll/${selectedCourse.id}`, 
+                          { type: "paid" }, 
+                          { headers: { Authorization: `Bearer ${token}` } }
+                      );
+                      triggerToast("🎉 Payment Successful! Course Unlocked.", "success");
+                      fetchData(); setShowModal(false); setActiveTab("learning");
+                  },
+                  prefill: { name: "Student", email: "student@iqmath.com" },
+                  theme: { color: "#005EB8" },
+              };
+
+              const rzp = new (window as any).Razorpay(options);
+              rzp.open();
+          }
       } catch (err) {
-          triggerToast("Enrollment failed.", "error");
+          triggerToast("Transaction Failed.", "error");
       } finally {
           setProcessing(false);
       }
   };
+  
+  // 🟢 NEW: Secure Certificate Downloader
+  const handleDownloadCertificate = async (courseId: number, courseTitle: string) => {
+      triggerToast("Downloading certificate...", "success");
+      try {
+          const response = await axios.get(`http://127.0.0.1:8000/api/v1/generate-pdf/${courseId}`, {
+              headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
+              responseType: 'blob', // Important: Tells Axios this is a file, not text
+          });
+
+          // Create a hidden download link and click it
+          const url = window.URL.createObjectURL(new Blob([response.data]));
+          const link = document.createElement('a');
+          link.href = url;
+          link.setAttribute('download', `${courseTitle.replace(/\s+/g, '_')}_Certificate.pdf`);
+          document.body.appendChild(link);
+          link.click();
+          
+          // Cleanup
+          link.remove();
+          window.URL.revokeObjectURL(url);
+      } catch (error) {
+          console.error("Download error:", error);
+          triggerToast("Failed to download certificate. Try again.", "error");
+      }
+  };
 
   const openEnrollModal = (course: Course) => { setSelectedCourse(course); setShowModal(true); };
-
-  const handlePayment = async (courseId: number, price: number) => { 
-      try { 
-          const orderUrl = "http://127.0.0.1:8000/api/v1/create-order"; 
-          const { data } = await axios.post(orderUrl, { amount: price }); 
-          const options = { 
-              key: "rzp_test_Ru8lDcv8KvAiC0", 
-              amount: data.amount, currency: "INR", 
-              name: "iQmath Pro", description: "Lifetime Course Access", 
-              order_id: data.id, 
-              handler: async function (response: any) { 
-                  handleFreeEnroll(courseId); 
-              }, 
-              theme: { color: "#87C232" } 
-          }; 
-          const rzp1 = new (window as any).Razorpay(options); 
-          rzp1.open(); 
-      } catch (error) { alert("Payment failed. Check backend console."); } 
-  };
-
-  const handleTrialParams = async () => { 
-      if (!selectedCourse) return; setProcessing(true); 
-      try { 
-          const token = localStorage.getItem("token"); 
-          await axios.post(`http://127.0.0.1:8000/api/v1/enroll/${selectedCourse.id}`, { type: "trial" }, { headers: { Authorization: `Bearer ${token}` } }); 
-          triggerToast("Trial Activated!"); setShowModal(false); setActiveTab("learning"); fetchData(); 
-      } catch(e){ triggerToast("Error", "error"); } finally { setProcessing(false); }
-  };
-
-  const handlePasswordChange = async (e: React.FormEvent) => { e.preventDefault(); triggerToast("Password Updated!"); setSavingSettings(false); };
   const handleLogout = () => { localStorage.clear(); navigate("/"); };
 
-  // --- CODE ARENA VIEW ---
+  // --- ⚔️ THE REAL CODE ARENA VIEW ---
   if (activeTest) { 
-    return ( 
-      <div className="flex flex-col h-screen bg-[#F8FAFC] font-sans overflow-hidden relative"> 
-        <div className="h-14 bg-white border-b border-slate-200 flex items-center justify-between px-6 shadow-sm z-10"> 
-          <div className="flex items-center gap-4"> 
-            <div className="flex items-center gap-2 text-slate-800 font-extrabold text-lg"> <Code className="text-blue-600" /> iQmath <span className="text-slate-400 font-normal">Arena</span> </div> 
-            <div className="h-6 w-px bg-slate-200"></div> 
-            <h3 className="text-sm font-bold text-slate-700">{activeTest.title}</h3> 
-          </div> 
-          <div className="flex items-center gap-2"> {activeTest.problems.map((_, idx) => ( <button key={idx} onClick={() => switchQuestion(idx)} className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${idx === currentProblemIndex ? "bg-blue-600 text-white shadow-md" : "bg-slate-100 text-slate-500 hover:bg-slate-200"}`}> Q{idx + 1} </button> ))} </div> 
-          <div className="flex items-center gap-4"> 
-            <div className={`px-3 py-1.5 rounded-lg border font-mono text-sm font-bold flex items-center gap-2 ${timeLeft < 300 ? "bg-red-50 border-red-200 text-red-600 animate-pulse" : "bg-slate-50 border-slate-200 text-slate-700"}`}> <Clock size={14} /> {Math.floor(timeLeft / 60)}:{(timeLeft % 60).toString().padStart(2, "0")} </div> 
-            <button onClick={() => submitTest(false)} className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-xs font-bold transition-colors">Finish Test</button> 
-          </div> 
-        </div> 
-        <div className="flex flex-1 overflow-hidden p-4 gap-4"> 
-          <div className="w-[40%] flex flex-col gap-4"> 
-            <div className="flex-1 bg-white rounded-xl shadow-sm border border-slate-200 p-6 overflow-y-auto"> 
-              <div className="flex justify-between items-start mb-4 border-b border-slate-100 pb-3"> <h2 className="text-xl font-bold text-slate-800">{activeTest.problems[currentProblemIndex]?.title}</h2> <span className="bg-blue-50 text-blue-600 text-[10px] font-bold px-2 py-1 rounded border border-blue-100">MEDIUM</span> </div> 
-              <p className="text-slate-600 text-sm leading-relaxed mb-6 whitespace-pre-wrap">{activeTest.problems[currentProblemIndex]?.description || "No description available."}</p> 
-              <div className="bg-slate-50 rounded-lg p-4 border border-slate-100"> 
-                <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">Example Case</h4> 
-                {JSON.parse(activeTest.problems[currentProblemIndex]?.test_cases || "[]").length > 0 && ( 
-                  <div className="space-y-3"> 
-                    <div> <div className="text-[10px] font-bold text-slate-500 mb-1">INPUT</div> <code className="block bg-white border border-slate-200 p-2 rounded text-xs font-mono text-slate-700">{JSON.parse(activeTest.problems[currentProblemIndex].test_cases)[0].input}</code> </div> 
-                    <div> <div className="text-[10px] font-bold text-slate-500 mb-1">OUTPUT</div> <code className="block bg-white border border-slate-200 p-2 rounded text-xs font-mono text-slate-700">{JSON.parse(activeTest.problems[currentProblemIndex].test_cases)[0].output}</code> </div> 
-                  </div> 
-                )} 
-              </div> 
-            </div> 
-            <div className="h-[200px] shrink-0 bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden relative"> 
-              <div className="absolute top-3 left-3 z-10 flex items-center gap-2"> 
-                <div className={`px-2 py-1 rounded text-[10px] font-bold text-white flex items-center gap-1 ${faceStatus === "ok" ? "bg-green-500" : "bg-red-500"}`}> <div className="w-1.5 h-1.5 bg-white rounded-full animate-pulse"></div> {faceStatus === "ok" ? "PROCTORING ACTIVE" : "WARNING"} </div> 
-                <div className="px-2 py-1 rounded bg-black/50 text-white text-[10px] font-bold">Warn: {warnings}/3</div> 
-              </div> 
-              <video ref={videoRef} autoPlay muted className="w-full h-full object-cover transform scale-x-[-1]" /> 
-            </div> 
-          </div> 
-          <div className="w-[60%] flex flex-col gap-4"> 
-            <div className="flex-[2.5] bg-white rounded-xl shadow-sm border border-slate-200 flex flex-col overflow-hidden"> 
-              <div className="bg-slate-50 border-b border-slate-200 h-10 flex items-center justify-between px-4"> <div className="flex items-center gap-2 text-xs font-bold text-slate-600"> <Code size={14} /> Editor </div> <select value={language} onChange={(e) => setLanguage(parseInt(e.target.value))} className="bg-white border border-slate-300 text-xs rounded px-2 py-0.5 outline-none focus:border-blue-500 cursor-pointer"> {languages.map(l => <option key={l.id} value={l.id}>{l.name}</option>)} </select> </div> 
-              <div className="flex-1 pt-2"> <Editor height="100%" defaultLanguage="python" language={languages.find(l => l.id === language)?.value} theme="light" value={userCode} onChange={(val) => setUserCode(val || "")} options={{ minimap: { enabled: false }, fontSize: 14, scrollBeyondLastLine: false, padding: { top: 10 } }} /> </div> 
-            </div> 
-            <div className="flex-[1.5] flex flex-col gap-4"> 
-              <div className="flex-[1.3] bg-slate-900 rounded-xl shadow-sm border border-slate-800 flex flex-col overflow-hidden"> 
-                <div className="bg-slate-950 h-8 flex items-center px-4 border-b border-slate-800 text-[10px] font-bold text-slate-400 uppercase tracking-wider gap-2"> <Terminal size={12} /> Console Output </div> 
-                <div className="flex-1 p-4 font-mono text-xs text-green-400 overflow-y-auto whitespace-pre-wrap"> {consoleOutput} </div> 
-              </div> 
-              <div className="h-12 flex gap-3"> 
-                <button onClick={handleSave} className="flex-1 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 font-bold rounded-lg flex items-center justify-center gap-2 transition-all shadow-sm"> <Save size={16} /> Save Code </button> 
-                <button onClick={handleRun} className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg flex items-center justify-center gap-2 transition-all shadow-sm"> {executionStatus === "running" ? <Cpu className="animate-spin" size={16} /> : <Play size={16} />} {executionStatus === "running" ? "Running..." : "Run Code"} </button> 
-              </div> 
-            </div> 
-          </div> 
-        </div> 
+    return (
+      <div className="flex h-screen bg-[#F8FAFC] font-sans overflow-hidden relative">
+        {/* VIOLATION OVERLAY */}
+        {isFullScreenViolation && (
+            <div className="fixed inset-0 z-[9999] bg-[#0f172a] flex flex-col items-center justify-center text-center">
+                <div className="mb-6"><AlertTriangle size={80} className="text-red-500 mx-auto mb-4" /></div>
+                <h1 className="text-4xl font-extrabold text-white tracking-widest mb-4">TEST INTERRUPTED</h1>
+                <p className="text-slate-400 text-lg max-w-lg mb-2">You have exited full-screen mode. This is a proctoring violation.</p>
+                <div className="bg-white/10 px-8 py-3 rounded-lg border border-red-500/30 mb-8"><span className="text-red-400 font-bold text-lg tracking-wider">Remaining Warnings: {Math.max(0, 3 - warnings)}</span></div>
+                <button onClick={returnToFullScreen} className="bg-red-500 hover:bg-red-600 text-white px-8 py-4 rounded font-bold text-lg tracking-wider flex items-center gap-2"><Monitor size={24} /> RETURN TO FULL SCREEN</button>
+            </div>
+        )}
 
-        {/* 🚨 VIOLATION OVERLAY (Combined for Tab & Fullscreen) */}
-        {violationType && ( 
-          <div className="fixed inset-0 bg-slate-900/95 z-[9999] flex flex-col items-center justify-center text-center p-8"> 
-            <AlertTriangle size={64} className="text-red-500 mb-6 animate-bounce" /> 
-            <h1 className="text-3xl font-bold text-white mb-2 tracking-widest uppercase text-red-500">TEST INTERRUPTED</h1> 
-            <p className="text-slate-400 max-w-md mb-2 text-lg"> 
-              {violationType === "Full Screen Exited" ? "You have exited full-screen mode." : "Tab switching or background activity detected."}
-            </p>
-            <p className="text-slate-500 text-sm mb-8">Your attempt has been logged. Reaching 3 warnings terminates the test.</p> 
-            
-            <div className="bg-red-500/10 text-red-400 px-6 py-3 rounded-lg font-mono font-bold mb-8 border border-red-500/30 text-xl"> 
-              Remaining Warnings: {3 - warnings} 
-            </div> 
-            
-            <button onClick={handleResumeTest} className="bg-red-500 hover:bg-red-600 text-white px-8 py-4 rounded-xl font-bold transition-all shadow-lg shadow-red-900/20 flex items-center gap-2"> 
-              <Monitor size={20} /> RETURN TO TEST 
-            </button> 
-          </div> 
-        )} 
-      </div> 
-    ); 
+        <div className="w-[35%] flex flex-col border-r border-slate-300 bg-white h-full shadow-lg z-10">
+            <div className="h-16 border-b border-slate-200 flex items-center px-6 bg-white">
+                <h3 className="text-2xl font-extrabold text-slate-800">problem {currentProblemIndex + 1}</h3>
+                <span className="ml-auto bg-yellow-100 text-yellow-700 text-xs font-bold px-2 py-1 rounded">MEDIUM</span>
+            </div>
+            <div className="flex-1 overflow-y-auto p-6 bg-white">
+                 <p className="text-slate-500 mb-6 italic">No description provided.</p> 
+                 {activeTest.problems[currentProblemIndex]?.description && <div className="prose prose-sm text-slate-600 mb-6">{activeTest.problems[currentProblemIndex].description}</div>}
+                 <h4 className="font-extrabold text-slate-900 mb-4 text-sm uppercase tracking-wide">TEST CASES</h4>
+                 <div className="space-y-2">{JSON.parse(activeTest.problems[currentProblemIndex]?.test_cases || "[]").map((tc: any, i: number) => ( <div key={i} className="bg-slate-50 border border-slate-200 p-3 rounded text-sm"><span className="font-mono font-bold block">Input: {tc.input}</span></div>))}</div>
+            </div>
+            <div className="h-56 bg-slate-100 border-t border-slate-300 p-4 relative flex items-center justify-center overflow-hidden">
+                <video ref={videoRef} autoPlay muted className="w-full h-full object-cover rounded-lg border-2 border-slate-300 bg-black" />
+                <div className="absolute top-6 left-6 bg-red-600 text-white text-[10px] font-bold px-2 py-0.5 rounded flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-white animate-pulse"></div> REC</div>
+                {faceStatus !== "ok" && <div className="absolute inset-0 bg-black/50 flex items-center justify-center z-10"><span className="text-red-400 font-bold bg-black px-2 py-1 rounded border border-red-500">FACE MISSING</span></div>}
+            </div>
+        </div>
+
+        <div className="w-[65%] flex flex-col bg-[#F3F4F6] h-full">
+            <div className="h-12 bg-white border-b border-slate-200 flex items-center justify-between px-4">
+                 <span className="text-xs font-bold text-slate-400 uppercase flex items-center gap-2"><Code size={14}/> Code Editor</span>
+                 <select value={language} onChange={(e) => setLanguage(Number(e.target.value))} className="text-xs border border-slate-300 rounded px-2 py-1 bg-white font-bold text-slate-700">
+                   {languages.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+                 </select>
+            </div>
+            <div className="flex-1 bg-white">
+                <Editor height="100%" theme="light" language={languages.find(l => l.id === language)?.value} value={userCode} onChange={(val) => setUserCode(val || "")} options={{fontSize: 14, minimap: { enabled: false }, scrollBeyondLastLine: false, fontFamily: "'JetBrains Mono', monospace", padding: { top: 16 }, lineNumbers: "on"}} />
+            </div>
+            <div className="h-32 bg-[#0F172A] border-t border-slate-700 text-slate-300 p-3 font-mono text-xs overflow-y-auto flex flex-col">
+                <div className="flex items-center gap-2 text-slate-500 font-bold uppercase text-[10px] mb-2 border-b border-slate-700 pb-1"><Monitor size={12} /> Terminal Output</div>
+                <pre className={`whitespace-pre-wrap flex-1 ${executionStatus === "error" ? "text-red-400" : "text-green-400"}`}>{executionStatus === "running" ? <span className="text-yellow-400">Compiling...</span> : consoleOutput}</pre>
+            </div>
+            <div className="h-16 bg-white border-t border-slate-200 flex items-center justify-end px-6 gap-4">
+                 <button onClick={() => switchQuestion(currentProblemIndex + 1 < activeTest.problems.length ? currentProblemIndex + 1 : 0)} className="flex items-center gap-2 px-6 py-2.5 rounded-lg border border-slate-300 text-slate-700 font-bold text-sm hover:bg-slate-50 transition-colors"><Save size={16} /> Save & Next</button>
+                 <button onClick={handleRun} disabled={executionStatus === "running"} className="flex items-center gap-2 px-8 py-2.5 rounded-lg bg-[#005EB8] text-white font-bold text-sm hover:bg-blue-700 shadow-md transition-all"><Play size={16} fill="currentColor" /> Run Code</button>
+            </div>
+        </div>
+        
+        {toast.show && <div className={`fixed top-5 right-5 z-[10000] px-6 py-3 rounded-lg shadow-xl text-white font-bold flex items-center gap-3 animate-bounce ${toast.type === "success" ? "bg-green-500" : "bg-red-500"}`}>{toast.type === "success" ? <CheckCircle size={20}/> : <AlertTriangle size={20}/>}{toast.message}</div>}
+      </div>
+    );
   }
 
-  // --- DASHBOARD UI (UNCHANGED) ---
+  // --- DASHBOARD UI ---
   const SidebarItem = ({ icon, label, active, onClick }: any) => (
-    <button onClick={onClick} title={collapsed ? label : ""} style={{ display: "flex", alignItems: "center", justifyContent: collapsed ? "center" : "flex-start", gap: "12px", width: "100%", padding: "12px 16px", border: "none", borderRadius: "10px", background: active ? brand.cardBg : "transparent", color: active ? brand.iqBlue : brand.textLight, fontWeight: active ? "700" : "500", cursor: "pointer", transition: "all 0.2s" }} onMouseOver={(e) => { if(!active) e.currentTarget.style.color = brand.textMain; }} onMouseOut={(e) => { if(!active) e.currentTarget.style.color = brand.textLight; }}>
-      {icon} {!collapsed && <span style={{ fontSize: "15px" }}>{label}</span>}
+    <button onClick={onClick} className={`flex items-center gap-3 w-full p-3 rounded-xl transition-all ${active ? "bg-white text-[#005EB8] font-bold shadow-sm" : "text-slate-500 hover:bg-slate-100"}`}>
+      {icon} {!collapsed && <span className="text-sm">{label}</span>}
     </button>
   );
 
   const CourseCard = ({ course, type }: { course: Course, type: "enrolled" | "available" }) => (
-    <div style={{ background: brand.cardBg, borderRadius: "16px", border: `1px solid ${brand.border}`, overflow: "hidden", transition: "transform 0.2s, box-shadow 0.2s" }} onMouseOver={(e) => { e.currentTarget.style.transform = "translateY(-4px)"; e.currentTarget.style.boxShadow = "0 12px 20px -5px rgba(0,0,0,0.1)"; }} onMouseOut={(e) => { e.currentTarget.style.transform = "translateY(0)"; e.currentTarget.style.boxShadow = "none"; }}>
-        <div style={{ height: "160px", background: "#E2E8F0", display: "flex", alignItems: "center", justifyContent: "center", position: "relative" }}>
-            {course.image_url ? (<img src={course.image_url.startsWith('http') ? course.image_url : `http://127.0.0.1:8000/${course.image_url}`} alt={course.title} style={{ width: "100%", height: "100%", objectFit: "cover" }} />) : (<BookOpen size={40} color={brand.textLight} />)}
-            {type === "enrolled" && <div style={{ position: "absolute", top: 10, right: 10, background: brand.iqGreen, color: "white", padding: "4px 10px", borderRadius: "20px", fontSize: "10px", fontWeight: "800" }}>ACTIVE</div>}
+    <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden hover:-translate-y-1 hover:shadow-lg transition-all">
+        <div className="h-40 bg-slate-200 relative flex items-center justify-center">
+            {course.image_url ? (<img src={course.image_url.startsWith('http') ? course.image_url : `http://127.0.0.1:8000/${course.image_url}`} alt={course.title} className="w-full h-full object-cover" />) : (<BookOpen size={40} className="text-slate-400" />)}
+            {type === "enrolled" && <div className="absolute top-2 right-2 bg-[#87C232] text-white px-2 py-1 rounded-full text-[10px] font-bold">ACTIVE</div>}
         </div>
-        <div style={{ padding: "20px" }}>
-            <h4 style={{ margin: "0 0 10px 0", fontSize: "16px", fontWeight: "700", color: brand.textMain }}>{course.title}</h4>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "16px" }}>
-                <span style={{ fontSize: "18px", fontWeight: "800", color: course.price === 0 ? brand.iqGreen : brand.iqBlue }}>
-                    {course.price === 0 ? "Free" : `₹${course.price}`}
-                </span>
-                
-                {/* 🟢 SMART BUTTON LOGIC */}
+        <div className="p-5">
+            <h4 className="font-bold text-slate-800 mb-4">{course.title}</h4>
+            <div className="flex justify-between items-center">
+                <span className={`text-lg font-extrabold ${course.price === 0 ? "text-[#87C232]" : "text-[#005EB8]"}`}>{course.price === 0 ? "Free" : `₹${course.price}`}</span>
                 {type === "available" ? (
-                    course.price === 0 ? (
-                        <button onClick={() => handleFreeEnroll(course.id)} disabled={processing} style={{ background: brand.iqGreen, color: "white", border: "none", padding: "8px 16px", borderRadius: "8px", fontWeight: "600", cursor: "pointer", display: "flex", gap: "6px", alignItems: "center", opacity: processing ? 0.7 : 1 }}>
-                            <Sparkles size={14} /> {processing ? "Enrolling..." : "Enroll Now"}
-                        </button>
-                    ) : (
-                        <button onClick={() => openEnrollModal(course)} style={{ background: brand.iqBlue, color: "white", border: "none", padding: "8px 16px", borderRadius: "8px", fontWeight: "600", cursor: "pointer", display: "flex", gap: "6px", alignItems: "center" }}>
-                            <Lock size={14} /> Unlock
-                        </button>
-                    )
-                ) : (
-                    <button onClick={() => navigate(`/course/${course.id}/player`)} style={{ background: brand.textMain, color: "white", border: "none", padding: "8px 16px", borderRadius: "8px", fontWeight: "600", cursor: "pointer", display: "flex", gap: "6px", alignItems: "center" }}>
-                        <PlayCircle size={14} /> Resume
+                    <button onClick={() => course.price === 0 ? handleFreeEnroll(course.id) : openEnrollModal(course)} className={`px-4 py-2 rounded-lg text-white font-bold text-sm flex items-center gap-2 ${course.price === 0 ? "bg-[#87C232]" : "bg-[#005EB8]"}`}>
+                        {course.price === 0 ? <Sparkles size={14} /> : <Lock size={14} />} {course.price === 0 ? "Enroll" : "Unlock"}
                     </button>
+                ) : (
+                    <button onClick={() => navigate(`/course/${course.id}/player`)} className="bg-slate-800 text-white px-4 py-2 rounded-lg font-bold text-sm flex items-center gap-2"><PlayCircle size={14} /> Resume</button>
                 )}
             </div>
         </div>
     </div>
   );
 
+  const StatCard = ({ icon: Icon, label, value }: any) => (
+    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} whileHover={{ y: -4, boxShadow: "0 10px 25px -5px rgba(0,0,0,0.1)" }} className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 flex items-center gap-5 transition-all">
+      <div className="p-3 rounded-xl bg-slate-100 text-slate-600"><Icon size={24} /></div>
+      <div><h4 className="text-3xl font-extrabold text-slate-800 tracking-tight">{value}</h4><p className="text-slate-500 text-xs font-bold uppercase tracking-wider mt-1">{label}</p></div>
+    </motion.div>
+  );
+
   return (
-    <div style={{ display: "flex", height: "100vh", background: brand.mainBg, fontFamily: "'Inter', sans-serif" }}>
-      <aside style={{ width: collapsed ? "80px" : "260px", background: brand.cardBg, borderRight: `1px solid ${brand.border}`, padding: "24px 12px", display: "flex", flexDirection: "column", position: "fixed", height: "100vh", zIndex: 50, transition: "width 0.3s ease" }}>
-        {/* ... Sidebar Content ... */}
-        <div style={{ marginBottom: "40px", paddingLeft: "10px", display: "flex", alignItems: "center", justifyContent: collapsed ? "center" : "space-between" }}>
-            {!collapsed && <span style={{ fontSize: "22px", fontWeight: "900", color: brand.iqBlue }}>iQmath<span style={{ color: brand.iqGreen }}>Pro</span></span>}
-            <button onClick={() => setCollapsed(!collapsed)} style={{ background: "transparent", border: "none", cursor: "pointer" }}><Menu size={24} color={brand.textMain} /></button>
-        </div>
-        <nav style={{ display: "flex", flexDirection: "column", gap: "8px", flex: 1 }}>
-          <SidebarItem icon={<LayoutDashboard size={20} strokeWidth={1.5} />} label="Home" active={activeTab === "home"} onClick={() => setActiveTab("home")} />
-          <SidebarItem icon={<BookOpen size={20} strokeWidth={1.5} />} label="My Learning" active={activeTab === "learning"} onClick={() => setActiveTab("learning")} />
-          <SidebarItem icon={<Code size={20} strokeWidth={1.5} />} label="Code Test" active={activeTab === "test"} onClick={() => setActiveTab("test")} />
-          <SidebarItem icon={<Compass size={20} strokeWidth={1.5} />} label="Explore Courses" active={activeTab === "explore"} onClick={() => setActiveTab("explore")} />
-          <SidebarItem icon={<Award size={20} strokeWidth={1.5} />} label="My Certificates" active={activeTab === "certificates"} onClick={() => setActiveTab("certificates")} />
+    <div className="flex h-screen bg-[#E2E8F0] font-sans">
+      <aside className={`bg-[#F8FAFC] border-r border-slate-200 p-6 flex flex-col fixed h-full z-50 transition-all ${collapsed ? "w-20" : "w-64"}`}>
+        <div className="mb-10 flex items-center justify-between">{!collapsed && <span className="text-xl font-extrabold text-[#005EB8]">iQmath<span className="text-[#87C232]">Pro</span></span>}<button onClick={() => setCollapsed(!collapsed)}><Menu size={24} className="text-slate-600" /></button></div>
+        <nav className="flex flex-col gap-2 flex-1">
+          <SidebarItem icon={<LayoutDashboard size={20} />} label="Home" active={activeTab === "home"} onClick={() => setActiveTab("home")} />
+          <SidebarItem icon={<BookOpen size={20} />} label="My Learning" active={activeTab === "learning"} onClick={() => setActiveTab("learning")} />
+          <SidebarItem icon={<Code size={20} />} label="Code Test" active={activeTab === "test"} onClick={() => setActiveTab("test")} />
+          <SidebarItem icon={<Compass size={20} />} label="Explore Courses" active={activeTab === "explore"} onClick={() => setActiveTab("explore")} />
+          <SidebarItem icon={<Award size={20} />} label="My Certificates" active={activeTab === "certificates"} onClick={() => setActiveTab("certificates")} />
         </nav>
-        <button onClick={handleLogout} style={{ display: "flex", alignItems: "center", justifyContent: collapsed ? "center" : "flex-start", gap: "12px", padding: "12px 16px", borderRadius: "10px", background: "transparent", color: "#ef4444", border: "none", fontWeight: "600", cursor: "pointer", width: "100%", marginTop: "5px" }} onMouseOver={(e) => e.currentTarget.style.background = "#fef2f2"} onMouseOut={(e) => e.currentTarget.style.background = "transparent"}><LogOut size={20} strokeWidth={1.5} /> {!collapsed && "Sign Out"}</button>
+        <button onClick={handleLogout} className="flex items-center gap-3 w-full p-3 rounded-xl text-red-500 hover:bg-red-50 font-bold mt-auto transition-all"><LogOut size={20} /> {!collapsed && "Sign Out"}</button>
       </aside>
 
-      <main style={{ marginLeft: collapsed ? "80px" : "260px", width: `calc(100% - ${collapsed ? "80px" : "260px"})`, minHeight: "100vh", padding: "40px", transition: "margin-left 0.3s ease, width 0.3s ease" }}>
-        <header style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "30px" }}>
-          <h2 style={{ fontSize: "24px", fontWeight: "800", color: brand.textMain }}>{activeTab === "test" ? "Active Challenges" : "Dashboard Overview"}</h2>
-          <div className="relative">
-            <button onClick={() => setShowProfileMenu(!showProfileMenu)} style={{ width: "40px", height: "40px", borderRadius: "50%", background: brand.iqBlue, color: "white", display: "flex", alignItems: "center", justifyContent: "center", border: "none", cursor: "pointer" }}><User size={20} /></button>
-            {showProfileMenu && (
-                <div style={{ position: "absolute", right: 0, top: "50px", width: "220px", background: brand.cardBg, borderRadius: "12px", boxShadow: "0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)", padding: "16px", zIndex: 100, border: `1px solid ${brand.border}` }}>
-                    <div style={{ marginBottom: "12px", borderBottom: `1px solid ${brand.border}`, paddingBottom: "12px" }}><p style={{ fontWeight: "700", color: brand.textMain, margin: 0 }}>{userData.name}</p><p style={{ fontSize: "12px", color: brand.textLight, margin: "4px 0 0 0", overflow: "hidden", textOverflow: "ellipsis" }}>{userData.email}</p></div>
-                    <button onClick={() => { setActiveTab("settings"); setShowProfileMenu(false); }} style={{ display: "flex", alignItems: "center", gap: "10px", width: "100%", padding: "8px", borderRadius: "6px", border: "none", background: "transparent", color: brand.textMain, cursor: "pointer", fontWeight: "500", textAlign: "left", marginBottom: "4px" }}><Settings size={16} /> Settings</button>
-                    <button onClick={handleLogout} style={{ display: "flex", alignItems: "center", gap: "10px", width: "100%", padding: "8px", borderRadius: "6px", border: "none", background: "transparent", color: "#ef4444", cursor: "pointer", fontWeight: "500", textAlign: "left" }}><LogOut size={16} /> Logout</button>
-                </div>
-            )}
-          </div>
+      <main className={`ml-${collapsed ? "20" : "64"} flex-1 p-10 transition-all ml-64`}>
+        <header className="flex justify-between items-center mb-8">
+          <h2 className="text-2xl font-extrabold text-slate-800">{activeTab === "test" ? "Active Challenges" : "Dashboard Overview"}</h2>
+          <button onClick={() => setShowProfileMenu(!showProfileMenu)} className="w-10 h-10 rounded-full bg-[#005EB8] text-white flex items-center justify-center"><User size={20} /></button>
         </header>
 
         {activeTab === "home" && (
             <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6 }} className="flex flex-col gap-8">
-                <motion.div initial={{ x: -50, opacity: 0 }} animate={{ x: 0, opacity: 1 }} transition={{ delay: 0.2 }} className="flex justify-between items-end"><div><h1 className="text-3xl font-extrabold text-slate-800 mb-2">Welcome back, Student! 👋</h1><p className="text-slate-500 font-medium flex items-center gap-2"><Sparkles size={16} className="text-yellow-500" /> You're on a <span className="text-slate-800 font-bold">5-day learning streak</span>. Keep it up!</p></div></motion.div>
+                <div><h1 className="text-3xl font-extrabold text-slate-800 mb-2">Welcome back, Student! 👋</h1><p className="text-slate-500 font-medium flex items-center gap-2"><Sparkles size={16} className="text-yellow-500" /> You're on a <span className="text-slate-800 font-bold">5-day learning streak</span>. Keep it up!</p></div>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6"><StatCard icon={BookOpen} label="Courses Enrolled" value={enrolledCourses.length} /><StatCard icon={Award} label="Certificates Earned" value={0} /><StatCard icon={Trophy} label="Challenges Attended" value={codeTests.filter(t => t.completed).length} /></div>
                 {enrolledCourses.length > 0 ? (
-                    <motion.div whileHover={{ y: -5, boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.15)" }} initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ delay: 0.4 }} className="bg-gradient-to-r from-[#005EB8] to-[#004080] rounded-2xl p-8 text-white shadow-xl flex items-center justify-between relative overflow-hidden"> <div className="absolute top-0 right-0 w-64 h-64 bg-white opacity-5 rounded-full -mr-16 -mt-16 blur-2xl"></div> <div className="relative z-10 w-full max-w-lg"> <div className="flex items-center gap-3 mb-4 text-blue-200 text-sm font-bold uppercase tracking-wider"><Zap size={16} /> Current Focus</div> <h2 className="text-2xl font-bold mb-6">{enrolledCourses[0].title}</h2> <div className="w-full bg-blue-900/50 rounded-full h-3 mb-4 overflow-hidden"><motion.div initial={{ width: 0 }} animate={{ width: "35%" }} transition={{ duration: 1.5, ease: "easeOut", delay: 0.6 }} className="h-full bg-[#87C232] rounded-full"></motion.div></div> <div className="flex justify-between text-sm font-medium opacity-90"><span>35% Completed</span><span>4/12 Modules</span></div> </div> <motion.button initial={{ x: 50, opacity: 0 }} animate={{ x: 0, opacity: 1 }} transition={{ delay: 0.8 }} whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} onClick={() => navigate(`/course/${enrolledCourses[0].id}/player`)} className="relative z-10 bg-white text-[#005EB8] px-8 py-3 rounded-xl font-bold flex items-center gap-2 shadow-lg">Resume <ChevronRight size={18} /></motion.button> </motion.div>
-                ) : ( <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="bg-white p-10 rounded-2xl border border-dashed border-slate-300 text-center" style={{ background: brand.cardBg, borderColor: brand.border }}><p className="text-slate-400">Enroll in a course to track your progress here.</p></motion.div> )}
+                    <motion.div whileHover={{ y: -5 }} className="bg-gradient-to-r from-[#005EB8] to-[#004080] rounded-2xl p-8 text-white shadow-xl relative overflow-hidden"> 
+                        <div className="relative z-10 w-full max-w-lg"> 
+                            <div className="flex items-center gap-3 mb-4 text-blue-200 text-sm font-bold uppercase tracking-wider"><Zap size={16} /> Current Focus</div> 
+                            <h2 className="text-2xl font-bold mb-6">{enrolledCourses[0].title}</h2> 
+                            <div className="w-full bg-blue-900/50 rounded-full h-3 mb-4 overflow-hidden"><motion.div initial={{ width: 0 }} animate={{ width: `${currentProgress.percent}%` }} transition={{ duration: 1.5, ease: "easeOut" }} className="h-full bg-[#87C232] rounded-full"></motion.div></div> 
+                            <div className="flex justify-between text-sm font-medium opacity-90"><span>{currentProgress.percent}% Completed</span><span>{currentProgress.completed}/{currentProgress.total} Modules</span></div> 
+                        </div> 
+                        <button onClick={() => navigate(`/course/${enrolledCourses[0].id}/player`)} className="absolute bottom-8 right-8 bg-white text-[#005EB8] px-6 py-2 rounded-lg font-bold flex items-center gap-2 shadow-lg hover:bg-blue-50 transition-colors">Resume <ChevronRight size={18} /></button> 
+                    </motion.div>
+                ) : ( <div className="bg-white p-10 rounded-2xl border border-dashed border-slate-300 text-center"><p className="text-slate-400">Enroll in a course to track your progress here.</p></div> )}
             </motion.div>
         )}
 
-        {/* ... (Other Tabs follow similar theme logic) ... */}
-        {activeTab === "learning" && <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: "24px" }}>{enrolledCourses.map(c => <CourseCard key={c.id} course={c} type="enrolled" />)}</div>}
-        {activeTab === "explore" && <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: "24px" }}>{availableCourses.map(c => <CourseCard key={c.id} course={c} type="available" />)}</div>}
-        {activeTab === "test" && ( <div style={{ display: "grid", gap: "20px" }}> {codeTests.length === 0 ? <p>No active challenges available.</p> : codeTests.map(test => ( <div key={test.id} style={{ background: brand.cardBg, padding: "25px", borderRadius: "12px", border: `1px solid ${brand.border}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}> <div><h3 style={{ margin: 0, fontSize: "18px", color: brand.textMain }}>{test.title}</h3><p style={{ margin: "5px 0", color: brand.textLight }}>Duration: {test.time_limit} Mins</p></div> <button onClick={() => setShowPassKeyModal(test.id)} style={{ background: brand.iqBlue, color: "white", border: "none", padding: "10px 20px", borderRadius: "8px", cursor: "pointer", fontWeight: "bold" }}>Start Test</button> </div> ))} </div> )}
-        {activeTab === "certificates" && ( <div style={{ animation: "fadeIn 0.3s ease" }}> <h3 style={{ fontSize: "20px", fontWeight: "700", marginBottom: "24px", color: brand.textMain }}>Your Credentials</h3> {enrolledCourses.length > 0 ? ( <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(350px, 1fr))", gap: "24px" }}> {enrolledCourses.map(course => ( <div key={course.id} style={{ background: brand.cardBg, borderRadius: "16px", border: `1px solid ${brand.border}`, overflow: "hidden", display: "flex", flexDirection: "column", transition: "transform 0.2s" }} onMouseOver={e => e.currentTarget.style.transform = "translateY(-4px)"} onMouseOut={e => e.currentTarget.style.transform = "translateY(0)"}> <div style={{ height: "200px", background: brand.mainBg, position: "relative", borderBottom: `1px solid ${brand.border}`, display: "flex", alignItems: "center", justifyContent: "center" }}> <div style={{ width: "80%", height: "80%", background: "white", border: "4px double #e2e8f0", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", boxShadow: "0 4px 6px -1px rgba(0,0,0,0.1)" }}> <Award size={32} color={brand.iqGreen} style={{ marginBottom: "8px" }} /> <div style={{ fontSize: "8px", fontWeight: "700", color: brand.iqBlue, letterSpacing: "1px" }}>CERTIFICATE OF COMPLETION</div> <div style={{ fontSize: "14px", fontWeight: "800", color: brand.textMain, marginTop: "8px", textAlign: "center", padding: "0 10px" }}>{course.title}</div> </div> </div> <div style={{ padding: "20px" }}> <button onClick={() => handleDownloadCertificate(course.id, course.title)} disabled={downloadingId === course.id} style={{ width: "100%", padding: "12px", background: brand.iqBlue, color: "white", border: "none", borderRadius: "10px", fontWeight: "700", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: "8px", opacity: downloadingId === course.id ? 0.7 : 1 }}> <Download size={18} /> {downloadingId === course.id ? "Generating PDF..." : "Download PDF"} </button> </div> </div> ))} </div> ) : ( <div style={{ textAlign: "center", padding: "60px", background: brand.cardBg, borderRadius: "16px", border: `2px dashed ${brand.border}` }}> <Award size={48} color="#cbd5e1" style={{ marginBottom: "20px" }} /> <h3 style={{ color: brand.textLight }}>No certificates earned yet</h3> </div> )} </div> )}
-        {activeTab === "settings" && ( <div style={{ maxWidth: "600px", margin: "0 auto", background: brand.cardBg, padding: "40px", borderRadius: "12px", border: `1px solid ${brand.border}` }}> <h3>Security Settings</h3> <form onSubmit={handlePasswordChange}> <input type="password" required minLength={6} value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder="New Password" style={{ width: "100%", padding: "10px", marginBottom: "15px", borderRadius: "8px", border: `1px solid ${brand.border}`, background: "white" }} /> <button type="submit" disabled={savingSettings} style={{ padding: "10px 20px", background: brand.iqBlue, color: "white", border: "none", borderRadius: "8px", cursor: "pointer" }}>Update Password</button> </form> </div> )}
-      </main>
+        {activeTab === "learning" && <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">{enrolledCourses.map(c => <CourseCard key={c.id} course={c} type="enrolled" />)}</div>}
+        {activeTab === "explore" && <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">{availableCourses.map(c => <CourseCard key={c.id} course={c} type="available" />)}</div>}
+        {activeTab === "test" && ( <div className="grid gap-5"> {codeTests.map(test => ( <div key={test.id} className="bg-white p-6 rounded-xl border border-slate-200 flex justify-between items-center"> <div><h3 className="text-lg font-bold text-slate-800">{test.title}</h3><p className="text-slate-500 text-sm">Duration: {test.time_limit} Mins</p></div> <button onClick={() => setShowPassKeyModal(test.id)} className="bg-[#005EB8] text-white px-6 py-2 rounded-lg font-bold">Start Test</button> </div> ))} </div> )}
+        
+        {/* 🎓 CERTIFICATES TAB (Added) */}
+        {activeTab === "certificates" && (
+            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="flex flex-col gap-6">
+                <div className="bg-white p-8 rounded-2xl shadow-sm border border-slate-200 text-center">
+                    <div className="w-20 h-20 bg-yellow-100 text-yellow-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                        <Award size={40} />
+                    </div>
+                    <h2 className="text-2xl font-extrabold text-slate-800 mb-2">Your Achievements</h2>
+                    <p className="text-slate-500 max-w-md mx-auto">
+                        Certificates are awarded upon 100% completion of a course. 
+                        Click download to get your high-resolution verified PDF.
+                    </p>
+                </div>
 
-      {/* ✅ CORRECTED MODAL RENDERING LOGIC */}
-      {showPassKeyModal !== null && ( 
-        <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.6)", zIndex: 100, display: "flex", alignItems: "center", justifyContent: "center" }}> 
-          <div style={{ background: "white", padding: "30px", borderRadius: "16px", width: "400px" }}> 
-            <h3 style={{ margin: "0 0 10px 0" }}>Enter Pass Key</h3> 
-            <input type="password" value={passKeyInput} onChange={e => setPassKeyInput(e.target.value)} placeholder="Ask instructor for key..." style={{ width: "100%", padding: "12px", margin: "15px 0", borderRadius: "8px", border: "1px solid #ccc" }} /> 
-            <button onClick={handleStartTest} style={{ width: "100%", padding: "12px", background: brand.iqBlue, color: "white", border: "none", borderRadius: "8px", cursor: "pointer" }}>Verify & Start</button> 
-            <button onClick={() => setShowPassKeyModal(null)} style={{ width: "100%", padding: "10px", marginTop: "10px", background: "none", border: "none", cursor: "pointer" }}>Cancel</button> 
-          </div> 
-        </div> 
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    {enrolledCourses.map(course => (
+                        <div key={course.id} className="bg-white p-6 rounded-xl border border-slate-200 hover:shadow-md transition-all flex items-center justify-between">
+                            <div className="flex items-center gap-4">
+                                <div className="h-16 w-16 bg-slate-100 rounded-lg flex items-center justify-center text-slate-400">
+                                    <Award size={32} />
+                                </div>
+                                <div>
+                                    <h4 className="font-bold text-slate-800">{course.title}</h4>
+                                    <span className="text-xs font-bold text-green-600 bg-green-50 px-2 py-1 rounded mt-1 inline-block">COMPLETED</span>
+                                </div>
+                            </div>
+                            
+                            <button 
+                                onClick={() => handleDownloadCertificate(course.id, course.title)}
+                                className="bg-[#005EB8] hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-bold text-sm flex items-center gap-2"
+                            >
+                                <Sparkles size={16} /> Download PDF
+                            </button>
+                        </div>
+                    ))}
+                    
+                    {enrolledCourses.length === 0 && (
+                        <div className="col-span-2 text-center text-slate-400 py-10 italic">
+                            No certificates earned yet. Keep learning!
+                        </div>
+                    )}
+                </div>
+            </motion.div>
+        )}
+      </main>
+      
+      
+      {/* 🔵 ENROLLMENT MODAL (Correctly Placed Outside Main Loop) */}
+      {showModal && selectedCourse && (
+        <div style={{ position: "fixed", top: 0, left: 0, width: "100%", height: "100%", background: "rgba(15, 23, 42, 0.7)", backdropFilter: "blur(6px)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }}>
+          <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="bg-white rounded-xl shadow-2xl max-w-sm w-full relative overflow-hidden">
+            <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-[#005EB8] to-[#87C232]"></div>
+            <button onClick={() => setShowModal(false)} className="absolute top-4 right-4 text-slate-400 hover:text-slate-600"><X size={20} /></button>
+            
+            <div className="p-6 pb-0">
+                <h3 className="text-xl font-extrabold text-slate-800 mb-1">Unlock Course</h3>
+                <p className="text-slate-500 text-xs">You are about to unlock <strong>{selectedCourse.title}</strong>.</p>
+            </div>
+
+            <div className="p-6">
+                <div className="bg-slate-50 p-4 rounded-lg border border-slate-200 mb-6 flex items-center justify-between">
+                    <div><span className="block text-[10px] font-bold text-slate-400 uppercase">Price</span><span className="text-2xl font-extrabold text-[#005EB8]">₹{selectedCourse.price}</span></div>
+                    <div className="text-right"><span className="block text-[10px] font-bold text-slate-400 uppercase">Access</span><span className="text-sm font-bold text-slate-700">Lifetime</span></div>
+                </div>
+
+                <div className="flex flex-col gap-3">
+                    <button onClick={() => handleEnrollStrategy("paid")} disabled={processing} className="w-full py-3 rounded-lg bg-[#005EB8] hover:bg-blue-700 text-white font-bold shadow-lg shadow-blue-500/30 transition-all flex items-center justify-center gap-2">
+                        {processing ? "Processing..." : <><Lock size={16} /> Pay & Unlock Now</>}
+                    </button>
+                    <button onClick={() => handleEnrollStrategy("trial")} disabled={processing} className="w-full py-3 rounded-lg bg-white border border-slate-300 text-slate-600 font-bold hover:bg-slate-50 transition-all text-sm">
+                        Start 7-Day Free Trial
+                    </button>
+                </div>
+            </div>
+          </motion.div>
+        </div>
+      )}
+      
+      {/* 🟢 PROFESSIONAL PASS KEY MODAL */}
+      {showPassKeyModal !== null && (
+        <div style={{ position: "fixed", top: 0, left: 0, width: "100%", height: "100%", background: "rgba(15, 23, 42, 0.6)", backdropFilter: "blur(4px)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }}>
+          <div style={{ background: "white", padding: "30px", borderRadius: "16px", width: "400px", boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.25)" }}>
+            <div className="flex justify-center mb-4"><div className="bg-blue-50 p-3 rounded-full"><Lock className="text-[#005EB8]" size={32} /></div></div>
+            <h3 style={{ margin: "0 0 10px 0", fontSize: "20px", fontWeight: "800", color: brand.textMain, textAlign: "center" }}>Enter Access Key</h3>
+            <p className="text-center text-slate-500 text-sm mb-6">This challenge is protected. Enter the pass key provided by your instructor.</p>
+            <input type="text" placeholder="e.g. SECRET123" value={passKeyInput} onChange={(e) => setPassKeyInput(e.target.value)} className="w-full p-3 border border-slate-300 rounded-lg outline-none focus:border-[#005EB8] text-center font-bold text-lg tracking-widest mb-6" />
+            <div style={{ display: "flex", gap: "10px" }}><button onClick={() => setShowPassKeyModal(null)} style={{ flex: 1, padding: "12px", background: "transparent", border: `1px solid ${brand.border}`, borderRadius: "8px", fontWeight: "bold", color: brand.textLight, cursor: "pointer" }}>Cancel</button><button onClick={handleStartTest} style={{ flex: 1, padding: "12px", background: brand.iqBlue, border: "none", borderRadius: "8px", fontWeight: "bold", color: "white", cursor: "pointer" }}>Start Test</button></div>
+          </div>
+        </div>
       )}
 
-      {toast.show && ( <div style={{ position: "fixed", top: "20px", right: "20px", zIndex: 9999, background: "white", padding: "16px 24px", borderRadius: "12px", boxShadow: "0 10px 30px -5px rgba(0,0,0,0.15)", borderLeft: `6px solid ${toast.type === "success" ? brand.iqGreen : "#ef4444"}`, display: "flex", alignItems: "center", gap: "12px" }}> {toast.type === "success" ? <CheckCircle size={24} color={brand.iqGreen} /> : <AlertCircle size={24} color="#ef4444" />} <div><h4 style={{ margin: "0" }}>{toast.type === "success" ? "Success" : "Error"}</h4><p style={{ margin: 0, fontSize: "13px" }}>{toast.message}</p></div> </div> )}
-      {showModal && selectedCourse && ( <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.6)", zIndex: 100, display: "flex", alignItems: "center", justifyContent: "center", backdropFilter: "blur(5px)" }}> <div style={{ background: "white", width: "450px", borderRadius: "20px", padding: "30px", position: "relative", boxShadow: "0 25px 50px -12px rgba(0,0,0,0.25)" }}> <button onClick={() => setShowModal(false)} style={{ position: "absolute", top: "20px", right: "20px", background: "none", border: "none", cursor: "pointer" }}><X size={24} color="#94a3b8" /></button> <h2 style={{ margin: "0 0 5px 0", fontSize: "22px", color: brand.textMain }}>Unlock Course</h2> <p style={{ margin: "0 0 25px 0", color: "#64748b" }}>{selectedCourse.title}</p> <div style={{ border: `2px solid ${brand.iqGreen}`, borderRadius: "12px", padding: "20px", background: "#f0fdf4", position: "relative", marginBottom: "25px" }}> <div style={{ position: "absolute", top: "-12px", right: "20px", background: brand.iqGreen, color: "white", fontSize: "11px", fontWeight: "800", padding: "4px 12px", borderRadius: "20px", textTransform: "uppercase" }}>Recommended</div> <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "10px" }}> <Clock size={24} color={brand.iqGreen} /> <h3 style={{ margin: 0, fontSize: "18px", color: "#166534" }}>Start 7-Day Free Trial</h3> </div> <p style={{ fontSize: "13px", color: "#15803d", margin: "0 0 15px 0", lineHeight: "1.5" }}>Get full access to all modules and assignments for 7 days. No credit card required. No commitment.</p> <button onClick={handleTrialParams} disabled={processing} style={{ width: "100%", padding: "12px", background: brand.iqGreen, color: "white", border: "none", borderRadius: "8px", fontWeight: "700", cursor: "pointer", fontSize: "15px", boxShadow: "0 4px 6px -1px rgba(135, 194, 50, 0.4)" }}> {processing ? "Activating..." : "Start Free Trial"} </button> </div> <div style={{ display: "flex", alignItems: "center", gap: "15px", margin: "0 0 25px 0" }}> <div style={{ flex: 1, height: "1px", background: "#e2e8f0" }}></div><span style={{ fontSize: "12px", fontWeight: "700", color: "#94a3b8" }}>OR</span><div style={{ flex: 1, height: "1px", background: "#e2e8f0" }}></div> </div> <button onClick={() => handlePayment(selectedCourse.id, 599)} className="w-full py-3 rounded-xl border border-slate-200 font-bold text-slate-700 flex items-center justify-center gap-2 hover:bg-slate-50 transition-all"> <CreditCard size={20} /> Buy Lifetime Access for ₹599 </button> </div> </div> )}
+      {/* ✅ PROFESSIONAL TOAST UI */}
+      {toast.show && (
+        <div style={{ position: "fixed", top: "20px", right: "20px", zIndex: 9999, background: "white", padding: "16px 24px", borderRadius: "12px", boxShadow: "0 10px 30px -5px rgba(0,0,0,0.15)", borderLeft: `6px solid ${toast.type === "success" ? brand.iqGreen : "#ef4444"}`, display: "flex", alignItems: "center", gap: "12px", animation: "slideIn 0.3s ease-out" }}>
+           {toast.type === "success" ? <CheckCircle size={24} color={brand.iqGreen} /> : <AlertTriangle size={24} color="#ef4444" />}
+           <div><h4 style={{ margin: "0 0 4px 0", fontSize: "14px", fontWeight: "700", color: brand.textMain }}>{toast.type === "success" ? "Success" : "Alert"}</h4><p style={{ margin: 0, fontSize: "13px", color: brand.textLight }}>{toast.message}</p></div>
+           <button onClick={() => setToast({ ...toast, show: false })} style={{ background: "none", border: "none", cursor: "pointer", marginLeft: "10px" }}><X size={16} color="#94a3b8" /></button>
+           <style>{`@keyframes slideIn { from { opacity: 0; transform: translateX(20px); } to { opacity: 1; transform: translateX(0); } }`}</style>
+        </div>
+      )}
     </div>
   );
 };

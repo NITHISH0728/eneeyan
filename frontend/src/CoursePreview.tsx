@@ -4,7 +4,7 @@ import axios from "axios";
 import { 
   ArrowLeft, Trash2, Edit2, Video, FileText, 
   Code, HelpCircle, FileQuestion, ChevronDown, ChevronRight,
-  CheckCircle, AlertCircle, X
+  CheckCircle, AlertCircle, X, AlertTriangle
 } from "lucide-react";
 
 const CoursePreview = () => {
@@ -19,8 +19,14 @@ const CoursePreview = () => {
   const [editTitle, setEditTitle] = useState("");
   const [editUrl, setEditUrl] = useState("");
 
+  // ✅ NEW: Delete Confirmation State
+  // Stores the ID of the item currently being asked for confirmation
+  const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
+
   // Toast State
-  const [toast, setToast] = useState({ show: false, message: "", type: "success" });
+  const [toast, setToast] = useState<{ show: boolean; message: string; type: "success" | "error" }>({ 
+    show: false, message: "", type: "success" 
+  });
 
   // 🎨 PROFESSIONAL THEME
   const brand = { 
@@ -34,7 +40,7 @@ const CoursePreview = () => {
 
   const triggerToast = (message: string, type: "success" | "error" = "success") => {
     setToast({ show: true, message, type });
-    setTimeout(() => setToast({ ...toast, show: false }), 3000);
+    setTimeout(() => setToast(prev => ({ ...prev, show: false })), 3000);
   };
 
   useEffect(() => { fetchCourseData(); }, [courseId]);
@@ -51,11 +57,19 @@ const CoursePreview = () => {
   };
 
   const handleDelete = async (itemId: number) => {
-    if (!confirm("Are you sure you want to delete this item? This cannot be undone.")) return;
+    // ✅ SAFETY CHECK REPLACING CONFIRM()
+    if (deleteConfirmId !== itemId) {
+        setDeleteConfirmId(itemId);
+        // Auto-reset confirmation after 3 seconds if not clicked again
+        setTimeout(() => setDeleteConfirmId(null), 3000);
+        return;
+    }
+
     try {
       const token = localStorage.getItem("token");
       await axios.delete(`http://127.0.0.1:8000/api/v1/content/${itemId}`, { headers: { Authorization: `Bearer ${token}` } });
       fetchCourseData(); 
+      setDeleteConfirmId(null);
       triggerToast("Item deleted successfully", "success");
     } catch (err) { triggerToast("Failed to delete item.", "error"); }
   };
@@ -86,7 +100,7 @@ const CoursePreview = () => {
   if (!course) return <div style={{ padding: "40px", color: brand.textLight }}>Course not found.</div>;
 
   return (
-    <div style={{ padding: "40px", maxWidth: "1000px", margin: "0 auto" }}>
+    <div style={{ padding: "40px", maxWidth: "1000px", margin: "0 auto", position: "relative" }}>
       {/* HEADER */}
       <div style={{ marginBottom: "30px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <div style={{ display: "flex", alignItems: "center", gap: "15px" }}>
@@ -139,12 +153,35 @@ const CoursePreview = () => {
                       </div>
 
                       <div style={{ display: "flex", gap: "8px" }}>
-                         <button onClick={() => handleEditStart(lesson)} style={{ padding: "8px", border: `1px solid ${brand.border}`, borderRadius: "8px", background: "white", cursor: "pointer", color: brand.textLight, transition: "all 0.2s" }} title="Edit Details">
-                           <Edit2 size={16} />
-                         </button>
-                         <button onClick={() => handleDelete(lesson.id)} style={{ padding: "8px", border: "1px solid #fee2e2", borderRadius: "8px", background: "#fff1f2", cursor: "pointer", color: "#ef4444", transition: "all 0.2s" }} title="Delete Item">
-                           <Trash2 size={16} />
-                         </button>
+                          <button onClick={() => handleEditStart(lesson)} style={{ padding: "8px", border: `1px solid ${brand.border}`, borderRadius: "8px", background: "white", cursor: "pointer", color: brand.textLight, transition: "all 0.2s" }} title="Edit Details">
+                            <Edit2 size={16} />
+                          </button>
+                          
+                          {/* ✅ SAFE DELETE BUTTON (Replaced Confirm Popup) */}
+                          <button 
+                            onClick={() => handleDelete(lesson.id)} 
+                            style={{ 
+                                padding: "8px 12px", 
+                                border: deleteConfirmId === lesson.id ? "1px solid #dc2626" : "1px solid #fee2e2", 
+                                borderRadius: "8px", 
+                                background: deleteConfirmId === lesson.id ? "#dc2626" : "#fff1f2", 
+                                cursor: "pointer", 
+                                color: deleteConfirmId === lesson.id ? "white" : "#ef4444", 
+                                transition: "all 0.2s",
+                                display: "flex",
+                                alignItems: "center",
+                                gap: "6px",
+                                fontSize: "12px",
+                                fontWeight: "bold"
+                            }} 
+                            title="Delete Item"
+                          >
+                            {deleteConfirmId === lesson.id ? (
+                                <>Confirm?</> 
+                            ) : (
+                                <Trash2 size={16} />
+                            )}
+                          </button>
                       </div>
 
                     </div>
@@ -185,12 +222,12 @@ const CoursePreview = () => {
           boxShadow: "0 10px 30px -5px rgba(0,0,0,0.15)", borderLeft: `6px solid ${toast.type === "success" ? brand.green : "#ef4444"}`,
           display: "flex", alignItems: "center", gap: "12px", animation: "slideIn 0.3s ease-out"
         }}>
-           {toast.type === "success" ? <CheckCircle size={24} color={brand.green} /> : <AlertCircle size={24} color="#ef4444" />}
+           {toast.type === "success" ? <CheckCircle size={24} color={brand.green} /> : <AlertTriangle size={24} color="#ef4444" />}
            <div>
              <h4 style={{ margin: "0 0 4px 0", fontSize: "14px", fontWeight: "700", color: brand.textMain }}>{toast.type === "success" ? "Success" : "Error"}</h4>
              <p style={{ margin: 0, fontSize: "13px", color: brand.textLight }}>{toast.message}</p>
            </div>
-           <button onClick={() => setToast({ ...toast, show: false })} style={{ background: "none", border: "none", cursor: "pointer", marginLeft: "10px" }}>
+           <button onClick={() => setToast(prev => ({ ...prev, show: false }))} style={{ background: "none", border: "none", cursor: "pointer", marginLeft: "10px" }}>
              <X size={16} color="#94a3b8" />
            </button>
            <style>{`@keyframes slideIn { from { opacity: 0; transform: translateX(20px); } to { opacity: 1; transform: translateX(0); } }`}</style>

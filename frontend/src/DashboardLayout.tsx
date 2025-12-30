@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Outlet, useNavigate, useLocation } from "react-router-dom";
 import { 
   LayoutDashboard, BookOpen, UserPlus, PlusCircle, LogOut, Bell, 
-  ChevronRight, Code, Menu, Settings, Users // ✅ Added Users Icon
+  ChevronRight, Code, Menu, Settings, Users, FolderOpen // ✅ Added FolderOpen Icon
 } from "lucide-react"; 
 
 const DashboardLayout = () => {
@@ -22,7 +22,7 @@ const DashboardLayout = () => {
     // UI Colors - UPDATED
     mainBg: "#E2E8F0",       // ✅ Lighter Slate Background instead of dark gray
     sidebarBg: "#F8FAFC",    // ✅ Very very light gray (off-white) for sidebar
-    cardBg: "#F8FAFC",       // ✅ Very very light gray (off-white) for content cards instead of pure white
+    cardBg: "#F8FAFC",       // ✅ Very very light gray (off-white) for content cards
     
     // Text Colors
     textMain: "#1e293b",     // Dark Slate (Professional Text)
@@ -38,8 +38,9 @@ const DashboardLayout = () => {
     { label: "My Courses", path: "/dashboard/courses", icon: <BookOpen size={20} /> },
     { label: "Code Arena", path: "/dashboard/code-arena", icon: <Code size={20} /> },
     { label: "Add Admits", path: "/dashboard/add-admits", icon: <UserPlus size={20} /> },
-    // ✅ NEW: Student Management Link
     { label: "Students", path: "/dashboard/students", icon: <Users size={20} /> },
+    // ✅ NEW: Assignment Verification Link
+    { label: "Verification", path: "/dashboard/assignments", icon: <FolderOpen size={20} /> }, 
     { label: "Create Course", path: "/dashboard/create-course", icon: <PlusCircle size={20} /> },
   ];
 
@@ -83,6 +84,7 @@ const DashboardLayout = () => {
         {/* NAVIGATION */}
         <nav style={{ flex: 1, padding: "24px 12px", display: "flex", flexDirection: "column", gap: "8px", overflowY: "auto" }}>
           {menuItems.map((item) => {
+            // Check if current path matches the item path
             const isActive = location.pathname === item.path || location.pathname === item.path + "/";
             
             return (
@@ -94,12 +96,23 @@ const DashboardLayout = () => {
                   display: "flex", alignItems: "center", justifyContent: collapsed ? "center" : "space-between", 
                   padding: "14px 16px", borderRadius: "10px", cursor: "pointer", 
                   
-                  // Active state uses the new cardBg (off-white)
+                  // Active state uses the new cardBg (off-white) and brand colors
                   background: isActive ? brand.cardBg : "transparent",
                   color: isActive ? brand.iqBlue : brand.textLight, 
                   boxShadow: isActive ? "0 2px 5px rgba(0,0,0,0.05)" : "none",
                   fontWeight: isActive ? "700" : "500", 
                   transition: "all 0.2s ease-in-out" 
+                }}
+                // Inline hover effect simulation
+                onMouseOver={(e) => {
+                    if (!isActive) {
+                        e.currentTarget.style.background = "#f1f5f9"; // light slate hover
+                    }
+                }}
+                onMouseOut={(e) => {
+                    if (!isActive) {
+                        e.currentTarget.style.background = "transparent";
+                    }
                 }}
               >
                 <div style={{ display: "flex", alignItems: "center", gap: "14px" }}>

@@ -156,3 +156,31 @@ class ChallengeProgress(Base):
     user_code = Column(Text, nullable=True) # Save their last successful code
 
     challenge = relationship("CourseChallenge", back_populates="progress")    
+    
+# ... existing code ...
+
+# ✅ NEW: TRACKS GREEN TICKS FOR MODULES
+class LessonProgress(Base):
+    __tablename__ = "lesson_progress"
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"))
+    content_item_id = Column(Integer, ForeignKey("content_items.id"))
+    is_completed = Column(Boolean, default=True)
+    completed_at = Column(DateTime, default=datetime.utcnow)
+
+    user = relationship("User")
+    content_item = relationship("ContentItem")
+
+# ✅ NEW: STORES GENERATED CERTIFICATES
+class UserCertificate(Base):
+    __tablename__ = "user_certificates"
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"))
+    course_id = Column(Integer, ForeignKey("courses.id"))
+    certificate_id = Column(String, unique=True) # Unique UUID for verification
+    issued_at = Column(DateTime, default=datetime.utcnow)
+    pdf_url = Column(String, nullable=True) # Optional if you store PDF file path
+
+    user = relationship("User")
+    course = relationship("Course")    
+
