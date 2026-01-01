@@ -1,11 +1,13 @@
-from celery import Celery
+import os
+from dotenv import load_dotenv
 
-# Define the app here
-celery_app = Celery(
-    "code_executor", 
-    broker="redis://127.0.0.1:6379/0", 
-    backend="redis://127.0.0.1:6379/0"
-)
+load_dotenv()
 
-# Optional: Ensure tasks are found
-celery_app.conf.imports = ('worker',)
+# CRITICAL: Read from the Environment Variable "REDIS_URL"
+# If it's missing, default to localhost (which fails on cloud but works locally)
+REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+
+broker_url = REDIS_URL
+result_backend = REDIS_URL
+
+broker_connection_retry_on_startup = True
