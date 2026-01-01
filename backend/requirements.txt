@@ -6,3 +6,10 @@ passlib[bcrypt]
 python-jose[cryptography]
 python-multipart
 reportlab
+gevent
+gunicorn
+celery
+redis
+gevent
+python-dotenv
+psycopg2-binary
