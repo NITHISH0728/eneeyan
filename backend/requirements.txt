@@ -13,3 +13,6 @@ redis
 gevent
 python-dotenv
 psycopg2-binary
+requests
+passlib
+bcrypt
