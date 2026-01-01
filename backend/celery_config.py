@@ -1,13 +1,21 @@
 import os
+from celery import Celery  # <--- This was missing
 from dotenv import load_dotenv
 
 load_dotenv()
 
-# CRITICAL: Read from the Environment Variable "REDIS_URL"
-# If it's missing, default to localhost (which fails on cloud but works locally)
+# 1. Get the Redis URL from Render (or localhost if testing)
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 
-broker_url = REDIS_URL
-result_backend = REDIS_URL
+# 2. Create the Celery App (This is what was missing!)
+celery_app = Celery(
+    "worker",
+    broker=REDIS_URL,
+    backend=REDIS_URL
+)
 
-broker_connection_retry_on_startup = True
+# 3. precise settings
+celery_app.conf.update(
+    broker_connection_retry_on_startup=True,
+    task_track_started=True,
+)
