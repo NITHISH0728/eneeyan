@@ -18,3 +18,7 @@ passlib
 bcrypt
 asyncpg
 pandas
+razorpay                # <--- Fixed: Added for Payments
+google-generativeai     # <--- Fixed: Added for AI features
+requests
+httpx
